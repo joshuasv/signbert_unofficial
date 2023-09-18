@@ -8,7 +8,21 @@ from IPython import embed; from sys import exit
 
 class SignBertModel(pl.LightningModule):
 
-    def __init__(self, in_channels, num_hid, num_heads, tformer_n_layers, eps, weight_beta, weight_delta, *args, **kwargs):
+    def __init__(
+            self, 
+            in_channels, 
+            num_hid, 
+            num_heads, 
+            tformer_n_layers, 
+            eps, 
+            lmbd, 
+            weight_beta, 
+            weight_delta,
+            total_steps,
+            lr,
+            *args, 
+            **kwargs
+        ):
         super().__init__()
         self.save_hyperparameters()
         self.in_channels = in_channels
@@ -16,8 +30,11 @@ class SignBertModel(pl.LightningModule):
         self.num_heads = num_heads
         self.tformer_n_layers = tformer_n_layers
         self.eps = eps
+        self.lmbd = lmbd
         self.weight_beta = weight_beta
         self.weight_delta = weight_delta
+        self.total_steps = total_steps
+        self.lr = lr
 
         self.ge = GestureExtractor(in_channels=in_channels, num_hid=num_hid)
         el = torch.nn.TransformerEncoderLayer(d_model=num_hid*21, nhead=self.num_heads, batch_first=True)
@@ -28,8 +45,10 @@ class SignBertModel(pl.LightningModule):
             mano_model_file='/home/gts/projects/jsoutelo/SignBERT+/signbert/model/hand_model/MANO_RIGHT_npy.pkl'
         )
 
-        self.pck_20 = PCK(thr=20)
-        self.pck_auc_20_40 = PCKAUC(thr_min=20, thr_max=40)
+        self.train_pck_20 = PCK(thr=20)
+        self.train_pck_auc_20_40 = PCKAUC(thr_min=20, thr_max=40)
+        self.val_pck_20 = PCK(thr=20)
+        self.val_pck_auc_20_40 = PCKAUC(thr_min=20, thr_max=40)
 
     def forward(self, x):
         x = self.ge(x)
@@ -47,31 +66,26 @@ class SignBertModel(pl.LightningModule):
         (logits, theta, beta) = self(x_masked)
 
         # Loss only applied on frames with masked joints
-        logits = logits[torch.where(masked_frames_idxs != -1.)]
-        x_or = x_or[torch.where(masked_frames_idxs != -1.)]
-        scores = scores[torch.where(masked_frames_idxs != -1.)]
+        valid_idxs = torch.where(masked_frames_idxs != -1.)
+        logits = logits[valid_idxs]
+        x_or = x_or[valid_idxs]
+        scores = scores[valid_idxs]
         # Compute LRec
         lrec = torch.norm(logits[scores>self.eps] - x_or[scores>=self.eps], p=1, dim=1).sum()
         beta_t_minus_one = torch.roll(beta, shifts=1, dims=1)
         beta_t_minus_one[:, 0] = 0.
         lreg = torch.norm(theta, 2) + self.weight_beta * torch.norm(beta, 2) + \
             self.weight_delta * torch.norm(beta - beta_t_minus_one, 2)
-        loss = lrec + lreg
+        loss = lrec + (self.lmbd * lreg)
         
-        self.pck_20(preds=logits, target=x_or)
-        self.pck_auc_20_40(preds=logits, target=x_or)
+        self.train_pck_20(preds=logits, target=x_or)
+        self.train_pck_auc_20_40(preds=logits, target=x_or)
 
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('train_PCK@20', self.pck_20, on_epoch=True)
-        self.log('train_PCK_AUC@20-40', self.pck_auc_20_40, on_epoch=True)
+        self.log('train_loss', loss, on_step=True, prog_bar=True)
+        self.log('train_PCK@20', self.train_pck_20, on_step=True, on_epoch=False)
+        self.log('train_PCK_AUC@20-40', self.train_pck_auc_20_40, on_step=True, on_epoch=False)
 
         return loss
-    
-    # def on_train_epoch_end(self):
-    #     self.log('train_PCK@20', self.pck_20.compute(), on_step=False)
-    #     self.log('train_PCK_AUC@20_40', self.pck_auc_20_40.compute(), on_step=False)
-    #     self.pck_20.reset()
-    #     self.pck_auc_20_40.reset()
 
     def validation_step(self, batch, batch_idx):
         _, x_or, x_masked, _, masked_frames_idxs = batch
@@ -79,21 +93,28 @@ class SignBertModel(pl.LightningModule):
         logits = logits[torch.where(masked_frames_idxs != -1.)]
         x_or = x_or[torch.where(masked_frames_idxs != -1.)]
         
-        self.pck_20(preds=logits, target=x_or)
-        self.pck_auc_20_40(preds=logits, target=x_or)
+        self.val_pck_20(preds=logits, target=x_or)
+        self.val_pck_auc_20_40(preds=logits, target=x_or)
         
-        self.log('val_PCK@20', self.pck_20, on_step=False, on_epoch=True)
-        self.log('val_PCK_AUC@20_40', self.pck_auc_20_40, on_step=False, on_epoch=True)
-
-    # def on_validation_epoch_end(self):
-    #     self.log('val_PCK@20', self.pck_20.compute(), on_step=False)
-    #     self.log('val_PCK_AUC@20_40', self.pck_auc_20_40.compute(), on_step=False)
-
-    #     self.pck_20.reset()
-    #     self.pck_auc_20_40.reset()
+        self.log('val_PCK@20', self.val_pck_20, on_step=False, on_epoch=True, prog_bar=True)
+        self.log('val_PCK_AUC@20_40', self.val_pck_auc_20_40, on_step=False, on_epoch=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters())
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=0.01)
+        # lr_scheduler_config = dict(
+        #     scheduler=torch.optim.lr_scheduler.OneCycleLR(
+        #         optimizer, 
+        #         max_lr=1e-4,
+        #         total_steps=self.total_steps,
+        #         pct_start=0.1,
+        #         anneal_strategy='linear'
+        #     )
+        # )
+
+        return dict(
+            optimizer=optimizer,
+            # lr_scheduler=lr_scheduler_config
+        )
 
         return optimizer
 

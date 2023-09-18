@@ -5,6 +5,7 @@ from torch.autograd import Variable
 
 from signbert.model.st_gcn.net.utils.tgcn import ConvTemporalGraphical
 from signbert.model.st_gcn.net.utils.graph import Graph
+from signbert.model.MaskedBatchNorm1d import MaskedBatchNorm1d
 
 class HeadlessModel(nn.Module):
     r"""Spatial temporal graph convolutional networks without a task-specific
@@ -39,7 +40,8 @@ class HeadlessModel(nn.Module):
         spatial_kernel_size = A.size(0)
         temporal_kernel_size = 9
         kernel_size = (temporal_kernel_size, spatial_kernel_size)
-        self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
+        # self.data_bn = nn.BatchNorm1d(in_channels * A.size(1))
+        self.data_bn = MaskedBatchNorm1d(in_channels * A.size(1))
         kwargs0 = {k: v for k, v in kwargs.items() if k != 'dropout'}
         self.st_gcn_networks = nn.ModuleList((
             st_gcn(in_channels, num_hid, kernel_size, 1, residual=False, **kwargs0),
@@ -55,13 +57,13 @@ class HeadlessModel(nn.Module):
         else:
             self.edge_importance = [1] * len(self.st_gcn_networks)
 
-    def forward(self, x):
-
+    def forward(self, x, lens):
+        from IPython import embed; from sys import exit
         # data normalization
         N, C, T, V, M = x.size()
         x = x.permute(0, 4, 3, 1, 2).contiguous()
         x = x.view(N * M, V * C, T)
-        x = self.data_bn(x)
+        x = self.data_bn(x, lens)
         x = x.view(N, M, V, C, T)
         x = x.permute(0, 1, 3, 4, 2).contiguous()
         x = x.view(N * M, C, T, V)

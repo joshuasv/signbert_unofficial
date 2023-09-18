@@ -32,6 +32,7 @@ class HANDS17DataModule(pl.LightningDataModule):
         [0, 0, 1]
     ])
     SEQ_PAD_VALUE = 0.0
+    NUM_SAMPLES = 99
 
     def __init__(self, batch_size):
         super().__init__()
@@ -211,7 +212,7 @@ class HANDS17DataModule(pl.LightningDataModule):
             self.setup_test = MaskKeypointDataset(HANDS17DataModule.NPY_IDXS, HANDS17DataModule.TEST_NPY_FPATH, R, m, K)
 
     def train_dataloader(self):
-        return DataLoader(self.setup_train, batch_size=self.batch_size, collate_fn=mask_keypoint_dataset_collate_fn)
+        return DataLoader(self.setup_train, batch_size=self.batch_size, collate_fn=mask_keypoint_dataset_collate_fn, drop_last=True)
 
     def val_dataloader(self):
         return DataLoader(self.setup_test, batch_size=self.batch_size, collate_fn=mask_keypoint_dataset_collate_fn)

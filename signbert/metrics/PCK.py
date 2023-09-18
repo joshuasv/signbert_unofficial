@@ -13,12 +13,12 @@ class PCK(Metric):
     def __init__(self, thr: float = 20.):
         super().__init__()
         self.threshold = thr
-        # self.add_state('threshold', torch.tensor(thr), dist_reduce_fx=None)
         self.add_state("correct", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, preds: Tensor, target: Tensor):
         assert preds.shape == target.shape
+
         distances = torch.norm(target - preds, dim=-1)
         correct = (distances < self.threshold).sum()
         self.correct += correct
@@ -38,7 +38,6 @@ class PCKAUC(Metric):
         self.metrics = ModuleList([PCK(thr) for thr in thresholds])
         self.add_state("thresholds", default=thresholds, dist_reduce_fx=None)
         self.add_state("diff", default=torch.tensor(thr_max-thr_min), dist_reduce_fx=None)
-        # self.add_state("auc", default=torch.tensor(0), dist_reduce_fx="sum")
     
     def update(self, preds: Tensor, target: Tensor):
         assert preds.shape == target.shape

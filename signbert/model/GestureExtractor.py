@@ -11,9 +11,10 @@ class GestureExtractor(nn.Module):
         self.stgcn = STGCN(in_channels, num_hid, {'layout': 'mediapipe_hand'}, edge_importance_weighting=False)
 
     def forward(self, x):
+        lens = (x!=0.0).all(-1).all(-1).sum(1)
         # STGCN expects inputs with shape (N, C, T, V, M)
         x = x.unsqueeze(-1).permute(0, 3, 1, 2, 4)
-        x = self.stgcn(x)
+        x = self.stgcn(x, lens)
         
         return x
 
