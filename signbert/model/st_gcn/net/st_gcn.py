@@ -5,7 +5,8 @@ from torch.autograd import Variable
 
 from signbert.model.st_gcn.net.utils.tgcn import ConvTemporalGraphical
 from signbert.model.st_gcn.net.utils.graph import Graph
-from signbert.model.MaskedBatchNorm1d import MaskedBatchNorm1d
+from signbert.model.masked_batchnorm import MaskedBatchNorm1d, MaskedBatchNorm2d
+
 
 class HeadlessModel(nn.Module):
     r"""Spatial temporal graph convolutional networks without a task-specific
@@ -72,7 +73,7 @@ class HeadlessModel(nn.Module):
         count = 0
         for gcn, importance in zip(self.st_gcn_networks, self.edge_importance):
             count += 1
-            x, _ = gcn(x, self.A * importance)
+            x, _ = gcn(x, self.A * importance, lens)
 
         _, c, t, v = x.size()
         x = x.view(N, M, c, t, v).permute(0, 2, 3, 4, 1)
@@ -229,8 +230,13 @@ class st_gcn(nn.Module):
         self.gcn = ConvTemporalGraphical(in_channels, out_channels,
                                          kernel_size[1])
 
+
+        self.tcn_bn1 = MaskedBatchNorm2d(out_channels)
+        self.tcn_bn2 = MaskedBatchNorm2d(out_channels)
+        self.tcn_drop = nn.Dropout(dropout)
+
         self.tcn = nn.Sequential(
-            nn.BatchNorm2d(out_channels),
+            # nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             nn.Conv2d(
                 out_channels,
@@ -239,8 +245,8 @@ class st_gcn(nn.Module):
                 (stride, 1),
                 padding,
             ),
-            nn.BatchNorm2d(out_channels),
-            nn.Dropout(dropout, inplace=True),
+            # nn.BatchNorm2d(out_channels),
+            # nn.Dropout(dropout, inplace=True),
         )
 
         if not residual:
@@ -261,10 +267,17 @@ class st_gcn(nn.Module):
 
         self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, x, A):
-
+    def forward(self, x, A, lens):
+        from IPython import embed; from sys import exit
         res = self.residual(x)
         x, A = self.gcn(x, A)
-        x = self.tcn(x) + res
+        
+        x = self.tcn_bn1(x, lens)
+        x = self.tcn(x)
+        x = self.tcn_bn2(x, lens)
+        x = self.tcn_drop(x)
+        x = x + res
+
+        # x = self.tcn(x) + res
 
         return self.relu(x), A
