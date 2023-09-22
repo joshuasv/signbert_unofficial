@@ -57,13 +57,13 @@ class SignBertModel(pl.LightningModule):
         N, T, C, V = x.shape
         x = x.reshape(N, T, C*V)
         x = self.te(x)
-        x, theta, beta = self.hd(x)
+        x, theta, beta, hand_mesh = self.hd(x)
 
-        return x, theta, beta
+        return x, theta, beta, hand_mesh
 
     def training_step(self, batch):
         _, x_or, x_masked, scores, masked_frames_idxs = batch
-        (logits, theta, beta) = self(x_masked)
+        (logits, theta, beta, _) = self(x_masked)
 
         # Loss only applied on frames with masked joints
         valid_idxs = torch.where(masked_frames_idxs != -1.)
@@ -89,7 +89,7 @@ class SignBertModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         _, x_or, x_masked, _, masked_frames_idxs = batch
-        (logits, theta, beta) = self(x_masked)
+        (logits, _, _, _) = self(x_masked)
         logits = logits[torch.where(masked_frames_idxs != -1.)]
         x_or = x_or[torch.where(masked_frames_idxs != -1.)]
         
@@ -116,7 +116,7 @@ class SignBertModel(pl.LightningModule):
             # lr_scheduler=lr_scheduler_config
         )
 
-        return optimizer
+        # return optimizer
 
 if __name__ == '__main__':
     import numpy as np
