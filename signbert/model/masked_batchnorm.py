@@ -1,4 +1,4 @@
-# Credit: https://gist.github.com/ilya16/c622461000480e66ae906dd9dbe8ea26
+# Small modification from: https://gist.github.com/ilya16/c622461000480e66ae906dd9dbe8ea26
 from typing import Optional
 
 import torch
@@ -6,6 +6,25 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.modules.batchnorm import _BatchNorm
 
+def lengths_to_mask(lengths, max_len=None, dtype=None):
+    """
+    Converts a "lengths" tensor to its binary mask representation.
+    
+    Based on: https://discuss.pytorch.org/t/how-to-generate-variable-length-mask/23397
+    
+    :lengths: N-dimensional tensor
+    :returns: N*max_len dimensional tensor. If max_len==None, max_len=max(lengtsh)
+    """
+    assert len(lengths.shape) == 1, 'Length shape should be 1 dimensional.'
+    max_len = max_len or lengths.max().item()
+    mask = torch.arange(
+        max_len,
+        device=lengths.device,
+        dtype=lengths.dtype)\
+    .expand(len(lengths), max_len) < lengths.unsqueeze(1)
+    if dtype is not None:
+        mask = torch.as_tensor(mask, dtype=dtype, device=lengths.device)
+    return mask
 
 # Masked Batch Normalization
 
@@ -54,7 +73,6 @@ class _MaskedBatchNorm(_BatchNorm):
         self._check_input_dim(input)
         # if mask is not None:
         if lengths is not None:
-            from signbert.model.MaskedBatchNorm1d import lengths_to_mask
             cls_name = self.__class__.__name__
             mask = lengths_to_mask(lengths, max_len=input.shape[2], dtype=input.dtype)
             if '1d' in cls_name:
