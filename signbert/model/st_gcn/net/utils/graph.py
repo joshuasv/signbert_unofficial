@@ -83,8 +83,21 @@ class Graph():
                 (13, 14), (14, 15), (15, 16), # Ring
                 (17, 18), (18, 19), (19, 20) # Pinky
             ]
-            neighbor_link = [(i - 1, j - 1) for (i, j) in neighbor_1base]
-            self.edge = self_link + neighbor_link
+            # neighbor_link = [(i - 1, j - 1) for (i, j) in neighbor_1base]
+            self.edge = self_link + neighbor_1base
+            self.center = 0
+        elif layout == 'mediapipe_six_hand_cluster':
+            self.num_node = 6 # One palm + five fingers
+            self_link = [(i, i) for i in range(self.num_node)]
+            neighbor_1base = [
+                (0,1), (0,2), (0,3), (0,4), (0,5),
+                (1,0), (1,2), (1,3), (1,4), (1,5),
+                (2,0), (2,1), (2,3), (2,4), (2,5),
+                (3,0), (3,1), (3,2), (3,4), (3,5),
+                (4,0), (4,1), (4,2), (4,3), (4,5),
+                (5,0), (5,1), (5,2), (5,3), (5,4),
+            ]
+            self.edge = self_link + neighbor_1base
             self.center = 0
         elif layout=='hands17':
             # Keypoints order: ["Wrist", "TMCP", "IMCP", "MMCP", "RMCP", "PMCP", "TPIP", "TDIP", "TTIP", "IPIP", "IDIP", "ITIP", "MPIP", "MDIP", "MTIP", "RPIP", "RDIP", "RTIP", "PPIP", "PDIP", "PTIP"]
@@ -122,8 +135,7 @@ class Graph():
                 (4, 15), (15, 16), (16, 17), # Ring
                 (5, 18), (18, 19), (19, 20) # Pinky
             ]
-            neighbor_link = [(i - 1, j - 1) for (i, j) in neighbor_1base]
-            self.edge = self_link + neighbor_link
+            self.edge = self_link + neighbor_1base
             self.center = 0
         else:
             raise ValueError("Do Not Exist This Layout.")

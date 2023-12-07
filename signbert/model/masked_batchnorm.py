@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.modules.batchnorm import _BatchNorm
+from IPython import embed
 
 def lengths_to_mask(lengths, max_len=None, dtype=None):
     """
@@ -37,15 +38,14 @@ def masked_batch_norm(input: Tensor, mask: Tensor, weight: Optional[Tensor], bia
     """
     if not training and (running_mean is None or running_var is None):
         raise ValueError('Expected running_mean and running_var to be not None when training=False')
-
     num_dims = len(input.shape[2:])
     _dims = (0,) + tuple(range(-num_dims, 0))
     _slice = (None, ...) + (None,) * num_dims
-
     if training:
         num_elements = mask.sum(_dims)
         mean = (input * mask).sum(_dims) / num_elements  # (C,)
         var = (((input - mean[_slice]) * mask) ** 2).sum(_dims) / num_elements  # (C,)
+        # var = (((input - mean.as_strided((1,mean.shape[0])+(1,)*num_dims, (1,)*len(input.shape))) * mask) ** 2).sum(_dims) / num_elements  # (C,)
 
         if running_mean is not None:
             running_mean.copy_(running_mean * (1 - momentum) + momentum * mean.detach())
@@ -54,10 +54,15 @@ def masked_batch_norm(input: Tensor, mask: Tensor, weight: Optional[Tensor], bia
     else:
         mean, var = running_mean, running_var
 
+    # mean = mean.as_strided((1,mean.shape[0])+(1,)*num_dims, (1,)*len(input.shape))
+    # var = var.as_strided((1,var.shape[0])+(1,)*num_dims, (1,)*len(input.shape))
     out = (input - mean[_slice]) / torch.sqrt(var[_slice] + eps)  # (N, C, ...)
-
+    # input = (input - mean) / torch.sqrt(var + eps)
     if weight is not None and bias is not None:
+        # weight = mean.as_strided((1,weight.shape[0])+(1,)*num_dims, (1,)*len(input.shape))
+        # bias = var.as_strided((1,bias.shape[0])+(1,)*num_dims, (1,)*len(input.shape))
         out = out * weight[_slice] + bias[_slice]
+        # input = input * weight + bias
 
     return out
 
@@ -74,7 +79,8 @@ class _MaskedBatchNorm(_BatchNorm):
         # if mask is not None:
         if lengths is not None:
             cls_name = self.__class__.__name__
-            mask = lengths_to_mask(lengths, max_len=input.shape[2], dtype=input.dtype)
+            # mask = lengths_to_mask(lengths, max_len=input.shape[2], dtype=input.dtype)
+            mask = lengths_to_mask(lengths, max_len=input.shape[2], dtype=torch.bool)
             if '1d' in cls_name:
                 mask = mask.unsqueeze(1).expand(input.shape)
             elif '2d' in cls_name:

@@ -4,8 +4,7 @@ import lightning.pytorch as pl
 
 from signbert.utils import my_import
 from signbert.metrics.PCK import PCK, PCKAUC
-from signbert.model.hand_model.HandAwareModelDecoder import HandAwareModelDecoder
-# from signbert.model.hand_decoder import HandAwareModelDecoder
+from manotorch.manolayer import ManoLayer, MANOOutput
 from IPython import embed; from sys import exit
 
 
@@ -30,6 +29,10 @@ class SignBertModel(pl.LightningModule):
             total_steps=None,
             normalize_inputs=False,
             use_pca=True,
+            flat_hand=False,
+            weight_decay=0.01,
+            use_onecycle_lr=False,
+            pct_start=None,
             *args,
             **kwargs,
         ):
@@ -53,32 +56,33 @@ class SignBertModel(pl.LightningModule):
         self.gesture_extractor_args = gesture_extractor_args
         self.normalize_inputs = normalize_inputs
         self.use_pca = use_pca
+        self.flat_hand = flat_hand
+        self.weight_decay = weight_decay
+        self.use_onecycle_lr = use_onecycle_lr
+        self.pct_start = pct_start
 
         num_hid_mult = 1 if hand_cluster else 21
 
-        # self.ge = GestureExtractor(in_channels=in_channels, num_hid=num_hid)
-        # self.ge = GestureExtractorSpatTemp(
-        #     in_channels=in_channels,
-        #     inter_channels=[num_hid, num_hid],
-        #     fc_unit=num_hid,
-        #     layout='mediapipe_hand',
-        #     strategy='spatial',
-        #     pad=1,
-        # )
         self.ge = self.gesture_extractor_cls(**gesture_extractor_args)
-        # TODO: remove hard coded value
         el = torch.nn.TransformerEncoderLayer(d_model=num_hid*num_hid_mult, nhead=num_heads, batch_first=True, dropout=tformer_dropout)
         self.te = torch.nn.TransformerEncoder(el, num_layers=tformer_n_layers)
-        self.hd = HandAwareModelDecoder(
+        self.pg = torch.nn.Linear(
             in_features=num_hid*num_hid_mult,
-            n_pca_components=n_pca_components, 
-            mano_model_file='/home/gts/projects/jsoutelo/SignBERT+/signbert/model/hand_model/MANO_RIGHT_npy.pkl',
-            use_pca=use_pca
+            out_features=(
+                n_pca_components + 3 + # theta + global pose
+                10 + # beta
+                9 + # rotation matrix
+                2 + # translation vector
+                1 # scale scalar
+            )
         )
-        # self.hd = HandAwareModelDecoder(
-        #     in_features=num_hid*num_hid_mult,
-        #     n_pca_components=self.n_pca_components,
-        # )
+        self.hd = ManoLayer(
+            center_idx=0,
+            flat_hand_mean=flat_hand,
+            mano_assets_root='/home/gts/projects/jsoutelo/SignBERT+/thirdparty/manotorch/assets/mano',
+            use_pca=use_pca,
+            ncomps=n_pca_components,
+        )
         self.train_pck_20 = PCK(thr=20)
         self.train_pck_auc_20_40 = PCKAUC(thr_min=20, thr_max=40)
         self.val_pck_20 = PCK(thr=20)
@@ -94,14 +98,42 @@ class SignBertModel(pl.LightningModule):
         N, T, C, V = x.shape
         x = x.view(N, T, C*V)
         x = self.te(x)
-        x, theta, beta, hand_mesh, c_r, c_s, c_o, center_jt, jt_3d = self.hd(x)
+        params = self.pg(x)
+        offset = self.n_pca_components + 3
+        pose_coeffs = params[...,:offset]
+        betas = params[...,offset:offset+10]
+        offset += 10
+        R = params[...,offset:offset+9]
+        R = R.view(N, T, 3, 3)
+        offset +=9
+        O = params[...,offset:offset+2]
+        offset += 2
+        S = params[...,offset:offset+1]
 
-        return x, theta, beta, hand_mesh, c_r, c_s, c_o, center_jt, jt_3d
+        pose_coeffs = pose_coeffs.view(N*T, -1)
+        betas = betas.view(N*T, -1)
+        mano_output: MANOOutput = self.hd(pose_coeffs, betas)
+
+        vertices = mano_output.verts
+        # pose_coeffs = mano_output.full_poses
+        # betas = mano_output.betas
+        joints_3d = mano_output.joints
+        pose_coeffs = pose_coeffs.view(N, T, -1)
+        betas = betas.view(N, T, -1)
+        vertices = vertices.view(N, T, 778, 3).detach().cpu()
+        center_joint = mano_output.center_joint.detach().cpu()
+        joints_3d = joints_3d.view(N, T, 21, 3)
+
+        # Ortographic projection
+        x = torch.matmul(R, joints_3d.permute(0, 1, 3, 2)).permute(0, 1, 3, 2)
+        x = x[...,:2]
+        x *= S.unsqueeze(-1)
+        x += O.unsqueeze(2)
+        return x, pose_coeffs, betas, vertices, R, S, O, center_joint, joints_3d
 
     def training_step(self, batch):
         _, x_or, x_masked, scores, masked_frames_idxs = batch
         (logits, theta, beta, _, _, _, _, _, _) = self(x_masked)
-
         # Loss only applied on frames with masked joints
         valid_idxs = torch.where(masked_frames_idxs != -1.)
         logits = logits[valid_idxs]
@@ -115,12 +147,12 @@ class SignBertModel(pl.LightningModule):
             self.weight_delta * torch.norm(beta - beta_t_minus_one, 2)
         loss = lrec + (self.lmbd * lreg)
         
-        self.train_step_losses.append(loss)
+        self.train_step_losses.append(loss.detach().cpu())
 
         if self.normalize_inputs:
             if not hasattr(self, 'means') or not hasattr(self, 'stds'):
-                self.means = np.load(self.trainer.datamodule.MEANS_NPY_FPATH).to(self.device)
-                self.stds = np.load(self.trainer.datamodule.STDS_NPY_FPATH).to(self.device)
+                self.means = torch.from_numpy(np.load(self.trainer.datamodule.MEANS_NPY_FPATH)).to(self.device)
+                self.stds = torch.from_numpy(np.load(self.trainer.datamodule.STDS_NPY_FPATH)).to(self.device)
             logits = (logits * self.stds) + self.means
             x_or = (x_or * self.stds) + self.means
 
@@ -158,17 +190,17 @@ class SignBertModel(pl.LightningModule):
 
         if self.normalize_inputs:
             if not hasattr(self, 'means') or not hasattr(self, 'stds'):
-                self.means = torch.tensor(np.load(self.trainer.datamodule.MEANS_NPY_FPATH)).to(self.device)
-                self.stds = torch.tensor(np.load(self.trainer.datamodule.STDS_NPY_FPATH)).to(self.device)
+                self.means = torch.from_numpy(np.load(self.trainer.datamodule.MEANS_NPY_FPATH)).to(self.device)
+                self.stds = torch.from_numpy(np.load(self.trainer.datamodule.STDS_NPY_FPATH)).to(self.device)
             logits = (logits * self.stds) + self.means
             x_or = (x_or * self.stds) + self.means
-
         self.val_pck_20(preds=logits, target=x_or)
         self.val_pck_auc_20_40(preds=logits, target=x_or)
         
         self.log('val_loss', loss, on_step=False, prog_bar=True)
         self.log('val_PCK_20', self.val_pck_20, on_step=False, on_epoch=True, prog_bar=True)
         self.log('val_PCK_AUC_20_40', self.val_pck_auc_20_40, on_step=False, on_epoch=True)
+        self.log("hp_metric", self.val_pck_20, on_step=False, on_epoch=True)
 
     def on_validation_epoch_end(self):
         mean_epoch_loss = torch.stack(self.val_step_losses).mean()
@@ -176,28 +208,30 @@ class SignBertModel(pl.LightningModule):
         self.val_step_losses.clear()
         
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=0.01)
-        # lr_scheduler_config = dict(
-        #     scheduler=torch.optim.lr_scheduler.OneCycleLR(
-        #         optimizer, 
-        #         max_lr=1e-4,
-        #         total_steps=self.total_steps,
-        #         pct_start=0.1,
-        #         anneal_strategy='linear'
-        #     )
-        # )
+        toret = {}
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        if self.use_onecycle_lr:
+            lr_scheduler_config = dict(
+                scheduler=torch.optim.lr_scheduler.OneCycleLR(
+                    optimizer, 
+                    max_lr=self.lr,
+                    total_steps=self.total_steps,
+                    pct_start=self.pct_start,
+                    anneal_strategy='linear'
+                )
+            )
+        toret['optimizer'] = optimizer
+        if self.use_onecycle_lr:
+            toret['lr_scheduler'] = lr_scheduler_config
 
-        return dict(
-            optimizer=optimizer,
-            # lr_scheduler=lr_scheduler_config
-        )
-
+        return toret
 
 if __name__ == '__main__':
     import numpy as np
     from signbert.data_modules.MaskKeypointDataset import MaskKeypointDataset
 
     dataset = MaskKeypointDataset(
+        idxs_fpath='/home/gts/projects/jsoutelo/SignBERT+/datasets/HANDS17/preprocess/idxs.npy',
         npy_fpath='/home/temporal2/jsoutelo/datasets/HANDS17/preprocess/X_train.npy',
         R=0.2,
         m=5,

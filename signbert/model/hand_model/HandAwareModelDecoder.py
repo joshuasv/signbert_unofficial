@@ -6,6 +6,7 @@ from torch import nn
 
 from signbert.model.hand_model.rodrigues_batch import rodrigues_batch
 
+from IPython import embed; from sys import exit
 
 class HandAwareModelDecoder(nn.Module):
     c_r_size = 3*3
@@ -16,11 +17,12 @@ class HandAwareModelDecoder(nn.Module):
     homo_row = torch.tensor(np.array([0., 0., 0., 1]), dtype=torch.float32).reshape((1, 1, 1, 1, 4))
     kintree_parent_idxs = torch.tensor(np.array([0,1,2,0,4,5,0,7,8,0,10,11,0,13,14]), dtype=torch.int64)
 
-    def __init__(self, num_hid, n_pca_components, mano_model_file):
+    def __init__(self, in_features, n_pca_components, mano_model_file, use_pca=True):
         super().__init__()
         self.n_pca_components = n_pca_components
         self.theta_size = n_pca_components
         self.mano_model_file = mano_model_file
+        self.use_pca = use_pca
 
         # Load pre-trained MANO and populate model related variables
         raw_data = self._load_mano_from_disk(self.mano_model_file)
@@ -47,7 +49,7 @@ class HandAwareModelDecoder(nn.Module):
         lbs_weights = raw_data['weights']
         self.register_buffer('lbs_weights', torch.tensor(lbs_weights, dtype=torch.float32))
         self.hand_model_params = nn.Linear(
-            in_features=num_hid*21, # TODO; remove hardcoded values
+            in_features=in_features,
             out_features=(
                 self.theta_size +  HandAwareModelDecoder.beta_size + 
                 HandAwareModelDecoder.c_r_size + 
@@ -152,7 +154,10 @@ class HandAwareModelDecoder(nn.Module):
         c_s = params[:, :, offset:offset+HandAwareModelDecoder.c_s_size]
         # Pose hand
         ppal_comps_pose = theta[:, :, HandAwareModelDecoder.global_npose_els:HandAwareModelDecoder.global_npose_els+self.n_pca_components]
-        hand_posed = torch.matmul(ppal_comps_pose, self.hand_ppal_comps)
+        if self.use_pca:
+            hand_posed = torch.matmul(ppal_comps_pose, self.hand_ppal_comps)
+        else:
+            hand_posed = ppal_comps_pose
         hand_posed = hand_posed + self.mean_hand
         # Concatenate global pose
         hand_posed = torch.concat((
@@ -205,6 +210,12 @@ class HandAwareModelDecoder(nn.Module):
             J3d[:, :, 9],
             hand_mesh_3d[:, :, 678],
         ), axis=2)
+
+        # Make 0th joint (wrist) as origin
+        center_joint = J3d_reordered[:, :, 0].unsqueeze(2)
+        J3d_reordered = J3d_reordered - center_joint
+        hand_mesh_3d = hand_mesh_3d - center_joint
+
         # Ortographic projection of 3d joints
         c_r = c_r.reshape((N, T, 3, 3))
         c_s = c_s.unsqueeze(2)
@@ -212,9 +223,5 @@ class HandAwareModelDecoder(nn.Module):
         J2d = torch.matmul(J3d_reordered, c_r)
         J2d = J2d[...,:2]
         J2d = (c_s * J2d) + c_o
-        # Ortographic projection of 3d hand mesh
-        hand_mesh_2d = torch.matmul(hand_mesh_3d, c_r)
-        hand_mesh_2d = hand_mesh_2d[...,:2]
-        hand_mesh_2d = (c_s * hand_mesh_2d) + c_o
 
-        return J2d, theta, beta, hand_mesh_2d
+        return J2d, theta, beta, hand_mesh_3d, c_r, c_s, c_o, center_joint, J3d_reordered

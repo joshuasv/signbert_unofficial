@@ -3,20 +3,32 @@ import numpy as np
 
 from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
+from multiprocessing import Lock
 from IPython import embed; from sys import exit
+
+file_lock = Lock()
 
 class MaskKeypointDataset(Dataset):
 
-    def __init__(self, idxs_fpath, npy_fpath, R, m, K):
+    def __init__(
+            self, 
+            idxs_fpath, 
+            npy_fpath, 
+            R, 
+            m, 
+            K, 
+            max_disturbance=0.25, 
+            identity=False
+        ):
         """In the paper they perform an ablation on the MSASL dataset:
             - R: 40%
             - m: not provided
             - K: 8
         """
         super().__init__()
-
-        self.idxs = np.load(idxs_fpath)
-        self.data = np.load(npy_fpath)
+        with file_lock:
+            self.idxs = np.load(idxs_fpath)
+            self.data = np.load(npy_fpath)
         # Max. number of frames to mask, ablation study, 0.4
         self.R = R
         # Number of joints to take when performing joint masking, ablation study
@@ -24,7 +36,8 @@ class MaskKeypointDataset(Dataset):
         # Max. number of continuous frames to take when performing clip masking, ablation study 8
         self.K = K
         # Max disturbance to add in joint masking (in pixels)
-        self.max_disturbance = 5
+        self.max_disturbance = max_disturbance
+        self.identity = identity
 
     def __len__(self):
         return len(self.data)
@@ -34,11 +47,14 @@ class MaskKeypointDataset(Dataset):
         seq = self.data[idx]
         score = seq[...,-1]
         seq = seq[...,:-1]
-        seq_masked, masked_frames_idx = self.mask_transform(seq)
+        if self.identity:
+            seq_masked, masked_frames_idx = self.mask_transform_identity(seq)
+        else:
+            seq_masked, masked_frames_idx = self.mask_transform(seq)
 
         return (seq_idx, seq, seq_masked, score, masked_frames_idx)
 
-    def mask_transform(self, seq):
+    def mask_transform_identity(self, seq):
         toret = seq.copy()
         # Get the number of frames without masking
         n_frames = (toret != 0.0).all((1,2)).sum()
@@ -71,8 +87,45 @@ class MaskKeypointDataset(Dataset):
                 # Add masked clip frames
                 clipped_masked_frames.extend(masked_frames_idx)
             else:
-                # Identity
+                # Identity; do nothing
                 pass
+        # Used in loss calculation, only masked frames are taken into account
+        masked_frames_idx = np.unique(np.concatenate((frames_to_mask, clipped_masked_frames)))
+        
+        return toret, masked_frames_idx
+
+    def mask_transform(self, seq):
+        toret = seq.copy()
+        # Get the number of frames without masking
+        n_frames = (toret != 0.0).all((1,2)).sum()
+        # Get the total number of frames to mask
+        n_frames_to_mask = int(np.ceil(self.R * n_frames))
+        # Get the actual frame idxs to mask
+        frames_to_mask = np.random.choice(n_frames, size=n_frames_to_mask, replace=False)
+
+        clipped_masked_frames = []
+        for f in frames_to_mask:
+            # Grab frame to be masked
+            curr_frame = toret[f]
+            # Select the type of masking
+            # 0 joint masking; 1 frame masking; 2 clip masking; 3 identity
+            # This could be a point of deviation. Do the authors consider the 
+            # identity to be taken into account into the loss?
+            op_idx = np.random.choice(3)
+            
+            if op_idx == 0:
+                # Joint masking
+                curr_frame = self.mask_joint(curr_frame)
+                toret[f] = curr_frame
+            elif op_idx == 1:
+                # Frame masking
+                curr_frame[:] = 0.
+                toret[f] = curr_frame
+            else:
+                # Clip masking
+                curr_frame, masked_frames_idx = self.mask_clip(f, toret, n_frames)
+                # Add masked clip frames
+                clipped_masked_frames.extend(masked_frames_idx)
         # Used in loss calculation, only masked frames are taken into account
         masked_frames_idx = np.unique(np.concatenate((frames_to_mask, clipped_masked_frames)))
         
@@ -100,11 +153,12 @@ class MaskKeypointDataset(Dataset):
         return seq, masked_frames_idx
 
     def mask_joint(self, frame):
+        m = np.random.randint(1, self.m+1)
         # Select the joints to mask
-        joint_idxs_to_mask = np.random.choice(21, size=self.m, replace=False)
+        joint_idxs_to_mask = np.random.choice(21, size=m, replace=False)
         # Select the operation
         # 0 zero-masking; 1 spatial disturbance
-        op_idx = np.random.binomial(1, p=0.5, size=self.m).reshape(-1, 1)
+        op_idx = np.random.binomial(1, p=0.5, size=m).reshape(-1, 1)
 
         def spatial_disturbance(xy):
             return xy + [np.random.uniform(-self.max_disturbance, self.max_disturbance), np.random.uniform(-self.max_disturbance, self.max_disturbance)]
@@ -175,6 +229,7 @@ if __name__ == '__main__':
     from torch.utils.data import DataLoader
 
     dataset = MaskKeypointDataset(
+        idxs_fpath='/home/gts/projects/jsoutelo/SignBERT+/datasets/HANDS17/preprocess/idxs.npy',
         npy_fpath='/home/temporal2/jsoutelo/datasets/HANDS17/preprocess/X_train.npy',
         R=0.2,
         m=5,

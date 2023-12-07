@@ -1,0 +1,1 @@
+from signbert.model.hand_decoder.HandAwareModelDecoder import HandAwareModelDecoder

@@ -6,6 +6,7 @@ from torch.autograd import Variable
 from signbert.model.st_gcn.net.utils.tgcn import ConvTemporalGraphical
 from signbert.model.st_gcn.net.utils.graph import Graph
 from signbert.model.masked_batchnorm import MaskedBatchNorm1d, MaskedBatchNorm2d
+from IPython import embed; from sys import exit
 
 
 class HeadlessModel(nn.Module):
@@ -59,7 +60,6 @@ class HeadlessModel(nn.Module):
             self.edge_importance = [1] * len(self.st_gcn_networks)
 
     def forward(self, x, lens):
-        from IPython import embed; from sys import exit
         # data normalization
         N, C, T, V, M = x.size()
         x = x.permute(0, 4, 3, 1, 2).contiguous()
@@ -228,7 +228,7 @@ class st_gcn(nn.Module):
         padding = ((kernel_size[0] - 1) // 2, 0)
 
         self.gcn = ConvTemporalGraphical(in_channels, out_channels,
-                                         kernel_size[1])
+                                         kernel_size[1]) # conv2d + einsum
 
 
         self.tcn_bn1 = MaskedBatchNorm2d(out_channels)
