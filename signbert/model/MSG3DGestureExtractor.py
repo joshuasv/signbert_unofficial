@@ -9,22 +9,23 @@ from signbert.model.st_gcn.net.st_gcn import HeadlessModel as STGCN
 from torch.nn.functional import dropout
 from IPython import embed
 
-num_node = 21
-self_link = [(i, i) for i in range(num_node)]
-inward = [
-    (0, 1), (0, 5), (0, 17), # Wrist
-    (5, 9), (9, 13), (13, 17), # Palm
-    (1, 2), (2, 3), (3, 4), # Thumb
-    (5, 6), (6, 7), (7, 8), # Index
-    (9, 10), (10, 11), (11, 12), # Middle
-    (13, 14), (14, 15), (15, 16), # Ring
-    (17, 18), (18, 19), (19, 20) # Pinky
-]
-outward = [(j, i) for (i, j) in inward]
-neighbor = inward + outward
 
 class Hands17Graph:
     def __init__(self, *args, **kwargs):
+        num_node = 21
+        self_link = [(i, i) for i in range(num_node)]
+        inward = [
+            (0, 1), (0, 5), (0, 17), # Wrist
+            (5, 9), (9, 13), (13, 17), # Palm
+            (1, 2), (2, 3), (3, 4), # Thumb
+            (5, 6), (6, 7), (7, 8), # Index
+            (9, 10), (10, 11), (11, 12), # Middle
+            (13, 14), (14, 15), (15, 16), # Ring
+            (17, 18), (18, 19), (19, 20) # Pinky
+        ]
+        outward = [(j, i) for (i, j) in inward]
+        neighbor = inward + outward
+        
         self.num_nodes = num_node
         self.edges = neighbor
         self.self_loops = [(i, i) for i in range(self.num_nodes)]
@@ -37,6 +38,36 @@ class Hands17Graph:
             A[edge] = 1.
         return A
     
+class PretrainGraph:
+    def __init__(self, *args, **kwargs):
+        num_node = 42
+        self_link = [(i, i) for i in range(num_node)]
+        rhand_inward = [
+            (0, 1), (0, 5), (0, 17), # Wrist
+            (5, 9), (9, 13), (13, 17), # Palm
+            (1, 2), (2, 3), (3, 4), # Thumb
+            (5, 6), (6, 7), (7, 8), # Index
+            (9, 10), (10, 11), (11, 12), # Middle
+            (13, 14), (14, 15), (15, 16), # Ring
+            (17, 18), (18, 19), (19, 20) # Pinky
+        ]
+        lhand_inward = np.array(rhand_inward) + 21
+        lhand_inward = list(map(tuple, lhand_inward))
+        rhand_outward = [(j, i) for (i, j) in rhand_inward]
+        lhand_outward = [(j, i) for (i, j) in lhand_inward]
+        neighbor = rhand_inward + rhand_outward + lhand_inward + lhand_outward
+        self.num_nodes = num_node
+        self.edges = neighbor
+        self.self_loops = [(i, i) for i in range(self.num_nodes)]
+        self.A_binary = self.get_adjacency_matrix(self.edges, self.num_nodes)
+        self.A_binary_with_I = self.get_adjacency_matrix(self.edges + self.self_loops, self.num_nodes)
+
+    def get_adjacency_matrix(self, edges, num_nodes):
+        A = np.zeros((num_nodes, num_nodes), dtype=np.float32)
+        for edge in edges:
+            A[edge] = 1.
+        return A
+
 class Hands17GraphCluster:
     def __init__(self, *args, **kwargs):
         self.num_nodes = 6
@@ -49,6 +80,85 @@ class Unsqueeze(nn.Module):
 
     def forward(self, x):
         return x.unsqueeze(self.dim)
+
+class PretrainGestureExtractor(nn.Module):
+
+    def __init__(
+            self,
+            num_point,
+            num_gcn_scales,
+            num_g3d_scales,
+            hid_dim,
+            in_channels,
+            do_cluster,
+            msg_3d_dropout=0.0,
+            st_gcn_dropout=0.0,
+            dropout=0.0,
+            relu_between=False,
+            input_both_hands=False
+        ):
+        super().__init__()
+        self.do_cluster = do_cluster
+        self.relu_between = relu_between
+        self.input_both_hands = input_both_hands
+
+        self.model = MSG3D(
+            num_point,
+            num_gcn_scales,
+            num_g3d_scales,
+            PretrainGraph(),
+            hid_dim,
+            msg_3d_dropout,
+            in_channels,
+        )
+        
+        if do_cluster:
+            self.maxpool1 = MediapipeHandPooling(last=False)
+            self.stgcn = STGCN(
+                in_channels=hid_dim[-1],
+                num_hid=hid_dim[-1],
+                graph_args={'layout': 'mediapipe_six_hand_cluster'},
+                edge_importance_weighting=False,
+                dropout=st_gcn_dropout
+            )
+            self.maxpool2 = MediapipeHandPooling(last=True)
+        
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, x):
+        lens = (x!=0.0).all(-1).all(-1).sum(1)
+        # MSG3D expects data in (N, C, T, V, M) format
+        x = x.permute(0, 3, 1, 2).unsqueeze(-1)
+        x = self.model(x, lens)
+        if self.do_cluster:
+            rhand = x[...,:21]
+            lhand = x[...,21:]
+            rhand = self.maxpool1(rhand)
+            lhand = self.maxpool1(lhand)
+            if self.relu_between:
+                rhand = F.relu(rhand) # Add M dimension
+                lhand = F.relu(lhand) # Add M dimension
+            rhand = rhand.unsqueeze(-1)
+            lhand = lhand.unsqueeze(-1)
+            rhand = self.stgcn(rhand, lens)
+            lhand = self.stgcn(lhand, lens)
+            rhand = rhand.squeeze(1)
+            lhand = lhand.squeeze(1)
+            rhand = self.maxpool2(rhand)
+            lhand = self.maxpool2(lhand)
+            if self.relu_between:
+                rhand = F.relu(rhand)
+                lhand = F.relu(lhand)
+            rhand = rhand.unsqueeze(-1) # Add M dimension
+            lhand = lhand.unsqueeze(-1) # Add M dimension
+            x = torch.concat((rhand, lhand), dim=3)
+        else:
+            x = x.unsqueeze(-1) # Add M dimension
+        x = self.dropout(x)
+        rhand = x[:, :, :, 0]
+        lhand = x[:, :, :, 1]
+
+        return (rhand, lhand)
 
 
 class GestureExtractor(nn.Module):
@@ -65,10 +175,12 @@ class GestureExtractor(nn.Module):
             st_gcn_dropout=0.0,
             dropout=0.0,
             relu_between=False,
+            input_both_hands=False
         ):
         super().__init__()
         self.do_cluster = do_cluster
         self.relu_between = relu_between
+        self.input_both_hands = input_both_hands
 
         self.model = MSG3D(
             num_point,

@@ -1,6 +1,7 @@
 import os
 import shutil
 import argparse
+from pprint import pprint
 
 import yaml
 from lightning.pytorch import Trainer
@@ -10,7 +11,9 @@ from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 
 from signbert.model.SignBertModel import SignBertModel
 from signbert.model.SignBertModelManoTorch import SignBertModel as SignBertModelManoTorch
+from signbert.model.PretrainSignBertModelManoTorch import SignBertModel as PretrainSignBert
 from signbert.data_modules.HANDS17DataModule import HANDS17DataModule
+from signbert.data_modules.PretrainDataModule import PretrainDataModule
 
 from IPython import embed; from sys import exit
 
@@ -30,24 +33,43 @@ if __name__ == '__main__':
     with open(args.config, 'r') as fid:
         cfg = yaml.load(fid, yaml.SafeLoader)
 
-    batch_size = cfg['batch_size']
+    pprint(cfg)
+
     epochs = args.epochs if args.epochs is not None else 600 
     lr = args.lr if args.lr is not None else cfg['lr'] # Preference over arguments
+    
+    batch_size = cfg['batch_size']
     normalize = cfg['normalize']
-    hands17 = HANDS17DataModule(
-        batch_size=batch_size, 
-        normalize=normalize, 
-        **cfg.get('dataset_args', dict())
-    )
     manotorch = cfg.get('manotorch', False)
-    mano_model_cls = SignBertModelManoTorch if manotorch else SignBertModel
-    model = mano_model_cls(
-        **cfg['model_args'], 
-        lr=lr, 
-        normalize_inputs=normalize, 
-        means_fpath=HANDS17DataModule.MEANS_NPY_FPATH, 
-        stds_fpath=HANDS17DataModule.STDS_NPY_FPATH
-    )
+    pretrain = cfg.get("pretrain", False)
+    datasets = cfg.get("datasets", None)
+
+    if pretrain:
+        assert datasets is not None
+        datamodule = PretrainDataModule(
+            datasets,
+            batch_size=batch_size,
+            normalize=normalize
+        )
+        model = PretrainSignBert(
+            **cfg["model_args"],
+            lr=lr, 
+            normalize_inputs=normalize, 
+        )
+    else:
+        datamodule = HANDS17DataModule(
+            batch_size=batch_size, 
+            normalize=normalize, 
+            **cfg.get('dataset_args', dict())
+        )
+        mano_model_cls = SignBertModelManoTorch if manotorch else SignBertModel
+        model = mano_model_cls(
+            **cfg['model_args'], 
+            lr=lr, 
+            normalize_inputs=normalize, 
+            means_fpath=HANDS17DataModule.MEANS_NPY_FPATH, 
+            stds_fpath=HANDS17DataModule.STDS_NPY_FPATH,
+        )
     
     if _DEBUG:
         trainer_config = dict(
@@ -87,4 +109,4 @@ if __name__ == '__main__':
         num_sanity_val_steps=0,
         precision=cfg.get('precision', '32-true')
     )
-    trainer.fit(model, hands17, ckpt_path=args.ckpt)
+    trainer.fit(model, datamodule, ckpt_path=args.ckpt)

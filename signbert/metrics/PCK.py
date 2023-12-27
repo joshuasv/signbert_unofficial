@@ -18,7 +18,6 @@ class PCK(Metric):
 
     def update(self, preds: Tensor, target: Tensor):
         assert preds.shape == target.shape
-
         distances = torch.norm(target - preds, dim=-1)
         correct = (distances < self.threshold).sum()
         self.correct += correct
@@ -41,7 +40,6 @@ class PCKAUC(Metric):
     
     def update(self, preds: Tensor, target: Tensor):
         assert preds.shape == target.shape
-        
         for m in self.metrics: m.update(preds, target)
 
     def compute(self):

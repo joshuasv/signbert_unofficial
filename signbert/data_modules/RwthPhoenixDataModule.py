@@ -6,15 +6,14 @@ import numpy as np
 import lightning.pytorch as pl
 from torch.utils.data import DataLoader
 
-from signbert.data_modules.MaskKeypointDataset import MaskKeypointDataset, mask_keypoint_dataset_collate_fn
-
+from signbert.data_modules.PretrainMaskKeypointDataset import PretrainMaskKeypointDataset, mask_keypoint_dataset_collate_fn
 
 from IPython import embed
 
 
 class RwthPhoenixDataModule(pl.LightningDataModule):
-    DPATH = '/home/gts/projects/jsoutelo/SignBERT+/datasets/RWTH-PHOENIX-Weather/phoenix2014-release/phoenix-2014-multisigner/features/skeleton-fullFrame-210x260px/rtmpose-l_8xb64-270e_coco-wholebody-256x192'
-    DPATH_T = '/home/gts/projects/jsoutelo/SignBERT+/datasets/RWTH-PHOENIX-WeatherT/features/skeleton-fullFrame-210x260px/rtmpose-l_8xb64-270e_coco-wholebody-256x192'
+    DPATH = '/home/tmpvideos/SLR/RWTH-PHOENIX-Weather/phoenix2014-release/phoenix-2014-multisigner/features/skeleton-fullFrame-210x260px/rtmpose-l_8xb64-270e_coco-wholebody-256x192'
+    DPATH_T = '/home/tmpvideos/SLR/PHOENIX-2014-T/features/skeleton-fullFrame-210x260px/rtmpose-l_8xb64-270e_coco-wholebody-256x192'
     TRAIN_DPATH = os.path.join(DPATH, 'train')
     TEST_DPATH = os.path.join(DPATH, 'test')
     DEV_DPATH = os.path.join(DPATH, 'dev')
@@ -94,7 +93,7 @@ class RwthPhoenixDataModule(pl.LightningDataModule):
             X_val_fpath = self.val_norm_fpath if self.normalize else self.val_fpath
             X_test_fpath = self.test_norm_fpath if self.normalize else self.test_fpath
 
-            self.setup_train = MaskKeypointDataset(
+            self.setup_train = PretrainMaskKeypointDataset(
                 self.train_idxs_fpath, 
                 X_train_fpath, 
                 self.R, 
@@ -102,7 +101,7 @@ class RwthPhoenixDataModule(pl.LightningDataModule):
                 self.K, 
                 self.max_disturbance
             )
-            self.setup_val = MaskKeypointDataset(
+            self.setup_val = PretrainMaskKeypointDataset(
                 self.val_idxs_fpath,
                 X_val_fpath, 
                 self.R, 
@@ -132,6 +131,7 @@ class RwthPhoenixDataModule(pl.LightningDataModule):
         np.save(self.test_idxs_fpath, test_idxs)
     
     def _generate_train_means_stds(self):
+        embed(); exit()
         npy_files = glob.glob(os.path.join(self.train_dpath, '*.npy'))
         npy_concats = np.concatenate([np.load(f)[...,:2] for f in npy_files])
         means = np.mean(npy_concats, axis=(0,1))

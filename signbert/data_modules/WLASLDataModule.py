@@ -6,7 +6,7 @@ import numpy as np
 import lightning.pytorch as pl
 from torch.utils.data import DataLoader
 
-from signbert.data_modules.MaskKeypointDataset import MaskKeypointDataset, mask_keypoint_dataset_collate_fn
+from signbert.data_modules.PretrainMaskKeypointDataset import PretrainMaskKeypointDataset, mask_keypoint_dataset_collate_fn
 from signbert.utils import read_json
 
 from IPython import embed
@@ -14,7 +14,7 @@ from IPython import embed
 
 class WLASLDataModule(pl.LightningDataModule):
 
-    DPATH = '/home/gts/projects/jsoutelo/SignBERT+/datasets/WLASL/start_kit'
+    DPATH = '/home/tmpvideos/SLR/WLASL-raw-data-and-mmpose/start_kit/'
     SPLIT_DATA_JSON_FPAHT = os.path.join(DPATH, 'WLASL_v0.3.json')
     SKELETON_DPAHT = os.path.join(DPATH, 'skeleton-data', 'rtmpose-l_8xb64-270e_coco-wholebody-256x192')
     PREPROCESS_DPATH = os.path.join(DPATH, 'preprocess')
@@ -39,6 +39,8 @@ class WLASLDataModule(pl.LightningDataModule):
         self.m = m
         self.K = K
         self.max_disturbance = max_disturbance
+        self.means_fpath = WLASLDataModule.MEANS_FPATH
+        self.stds_fpath = WLASLDataModule.STDS_FPATH
 
     def prepare_data(self):
         # Create preprocess path if it does not exist
@@ -110,7 +112,7 @@ class WLASLDataModule(pl.LightningDataModule):
             X_val_fpath = WLASLDataModule.VAL_NORM_FPATH if self.normalize else WLASLDataModule.VAL_FPATH
             X_test_fpath = WLASLDataModule.TEST_NORM_FPATH if self.normalize else WLASLDataModule.TEST_FPATH
 
-            self.setup_train = MaskKeypointDataset(
+            self.setup_train = PretrainMaskKeypointDataset(
                 WLASLDataModule.TRAIN_IDXS_FPATH, 
                 X_train_fpath, 
                 self.R, 
@@ -118,7 +120,7 @@ class WLASLDataModule(pl.LightningDataModule):
                 self.K, 
                 self.max_disturbance
             )
-            self.setup_val = MaskKeypointDataset(
+            self.setup_val = PretrainMaskKeypointDataset(
                 WLASLDataModule.VAL_IDXS_FPATH,
                 X_val_fpath, 
                 self.R, 

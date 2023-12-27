@@ -99,6 +99,14 @@ class Graph():
             ]
             self.edge = self_link + neighbor_1base
             self.center = 0
+        elif layout == 'mmpose_arms':
+            self.num_node = 6
+            self_link = [(i, i) for i in range(self.num_node)]
+            neighbor_1base = [
+                (0, 2), (2, 4), (1, 3), (3, 5)
+            ]
+            self.edge = self_link + neighbor_1base
+            self.center = 0
         elif layout=='hands17':
             # Keypoints order: ["Wrist", "TMCP", "IMCP", "MMCP", "RMCP", "PMCP", "TPIP", "TDIP", "TTIP", "IPIP", "IDIP", "ITIP", "MPIP", "MDIP", "MTIP", "RPIP", "RDIP", "RTIP", "PPIP", "PDIP", "PTIP"]
             # Hand image: http://icvl.ee.ic.ac.uk/hands17/wp-content/uploads/sites/5/2017/06/hand_map-768x475.png

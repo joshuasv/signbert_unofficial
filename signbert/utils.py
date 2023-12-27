@@ -15,6 +15,16 @@ def read_json(fpath):
         data = json.load(fid)
     return data
 
+def read_txt_as_list(fpath):
+    with open(fpath, 'r') as fid:
+        data = fid.read().split('\n')
+    return data
+
+def dict_to_json_file(dict, fpath):
+    with open(fpath, 'w') as fid:
+        json.dump(dict, fid)
+
+
 def _num_active_cuda_tensors():
     """
     Returns all tensors initialized on cuda devices

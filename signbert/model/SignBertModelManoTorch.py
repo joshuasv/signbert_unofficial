@@ -4,6 +4,7 @@ import lightning.pytorch as pl
 
 from signbert.utils import my_import
 from signbert.metrics.PCK import PCK, PCKAUC
+from signbert.model.PositionalEncoding import PositionalEncoding
 from manotorch.manolayer import ManoLayer, MANOOutput
 from IPython import embed; from sys import exit
 
@@ -65,6 +66,11 @@ class SignBertModel(pl.LightningModule):
 
         self.ge = self.gesture_extractor_cls(**gesture_extractor_args)
         el = torch.nn.TransformerEncoderLayer(d_model=num_hid*num_hid_mult, nhead=num_heads, batch_first=True, dropout=tformer_dropout)
+        self.pe = PositionalEncoding(
+            d_model=num_hid*num_hid_mult,
+            dropout=0.1,
+            max_len=2000,
+        )
         self.te = torch.nn.TransformerEncoder(el, num_layers=tformer_n_layers)
         self.pg = torch.nn.Linear(
             in_features=num_hid*num_hid_mult,
@@ -97,6 +103,7 @@ class SignBertModel(pl.LightningModule):
         x = x.squeeze(-1).permute(0, 2, 1, 3).contiguous()
         N, T, C, V = x.shape
         x = x.view(N, T, C*V)
+        x = self.pe(x)
         x = self.te(x)
         params = self.pg(x)
         offset = self.n_pca_components + 3
@@ -140,7 +147,7 @@ class SignBertModel(pl.LightningModule):
         x_or = x_or[valid_idxs]
         scores = scores[valid_idxs]
         # Compute LRec
-        lrec = torch.norm(logits[scores>self.eps] - x_or[scores>=self.eps], p=1, dim=1).sum()
+        lrec = torch.norm(logits[scores>self.eps] - x_or[scores>self.eps], p=1, dim=1).sum()
         beta_t_minus_one = torch.roll(beta, shifts=1, dims=1)
         beta_t_minus_one[:, 0] = 0.
         lreg = torch.norm(theta, 2) + self.weight_beta * torch.norm(beta, 2) + \
@@ -179,7 +186,7 @@ class SignBertModel(pl.LightningModule):
         x_or = x_or[valid_idxs]
         scores = scores[valid_idxs]
         # Compute LRec
-        lrec = torch.norm(logits[scores>self.eps] - x_or[scores>=self.eps], p=1, dim=1).sum()
+        lrec = torch.norm(logits[scores>self.eps] - x_or[scores>self.eps], p=1, dim=1).sum()
         beta_t_minus_one = torch.roll(beta, shifts=1, dims=1)
         beta_t_minus_one[:, 0] = 0.
         lreg = torch.norm(theta, 2) + self.weight_beta * torch.norm(beta, 2) + \

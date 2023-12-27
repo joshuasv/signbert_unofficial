@@ -10,7 +10,6 @@ from IPython import embed; from sys import exit
 
 
 class HANDS17DataModule(pl.LightningDataModule):
-    # HANDS17_DPATH = '/home/temporal2/jsoutelo/datasets/HANDS17'
     HANDS17_DPATH = '/home/tmpvideos/SLR/HANDS17/'
     TRACKING_ANNOTATIONS_FPATH = os.path.join(HANDS17_DPATH, 'test', 'test_annotation_tracking.txt')
     PREPROCESS_DPATH = os.path.join(HANDS17_DPATH, 'preprocess')
@@ -46,10 +45,11 @@ class HANDS17DataModule(pl.LightningDataModule):
             batch_size, 
             normalize=False, 
             R=0.3, 
-            m=5, 
+            m=5,
             K=8, 
             max_disturbance=0.25,
-            identity=False
+            identity=False,
+            no_mask_joint=False
         ):
         super().__init__()
         self.batch_size = batch_size
@@ -59,6 +59,7 @@ class HANDS17DataModule(pl.LightningDataModule):
         self.K = K
         self.max_disturbance = max_disturbance
         self.identity = identity
+        self.no_mask_joint = no_mask_joint
 
     def prepare_data(self):
         # Create preprocess directory if it does not exist
@@ -299,7 +300,8 @@ class HANDS17DataModule(pl.LightningDataModule):
                 self.m, 
                 self.K, 
                 self.max_disturbance,
-                self.identity
+                self.identity,
+                self.no_mask_joint
             )
             self.setup_test = MaskKeypointDataset(
                 HANDS17DataModule.NPY_IDXS, 
@@ -308,7 +310,8 @@ class HANDS17DataModule(pl.LightningDataModule):
                 self.m, 
                 self.K, 
                 self.max_disturbance,
-                self.identity
+                self.identity,
+                self.no_mask_joint
             )
 
     def train_dataloader(self):
@@ -343,7 +346,8 @@ def create_keypoints_video_with_images(keypoints_array, rgb_images, output_file,
         frame = rgb_images[frame_index].copy()  # Copy the RGB image to avoid modifying the original
 
         for kp_index in range(num_keypoints):
-            x, y = keypoints_array[frame_index, kp_index]
+            embed(); exit()
+            x, y, _ = keypoints_array[frame_index, kp_index]
             # Draw a circle for each key point type
             color = (0, 0, 255)  # Red color (BGR format)
             cv2.circle(frame, (int(x), int(y)), point_radius, color, -1)
@@ -354,35 +358,45 @@ def create_keypoints_video_with_images(keypoints_array, rgb_images, output_file,
     # Release the VideoWriter and close the video file
     out.release()
 
+def check_p_at_20(data_module):
+    embed(); exit()
+
+
 if __name__ == '__main__':
+    import argparse
     import cv2
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--create_video", action="store_true")
+    parser.add_argument("--check_p_at_20", action="store_true")
+    args = parser.parse_args()
 
     dataset = HANDS17DataModule(batch_size=32)
     dataset.prepare_data()
 
-    embed(); exit()
+    if args.create_video:
+        # test
+        X_train = np.load(dataset.TRAIN_NPY_FPATH)
+        tracking_imgs_dpath = os.path.join(HANDS17DataModule.HANDS17_DPATH, "tracking")
+        # grab a random sample
+        sample_idx = np.random.choice(len(X_train))
+        random_sample = X_train[sample_idx]
+        # remove paddings
+        random_sample = random_sample[(random_sample != 0.0).all((1,2))]
+        # grab tracking images
+        tracking_imgs_dpath = os.path.join(tracking_imgs_dpath, str(sample_idx + 1), 'images')
+        num_frames = len(random_sample)
+        tracking_imgs = sorted(os.listdir(tracking_imgs_dpath))[:num_frames]
+        tracking_imgs = [os.path.join(tracking_imgs_dpath, ti) for ti in tracking_imgs]
+        tracking_imgs = [cv2.imread(ti, cv2.IMREAD_UNCHANGED) for ti in tracking_imgs]
+        tracking_imgs = [cv2.normalize(ti, dst=None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1) for ti in tracking_imgs]
+        tracking_imgs = [cv2.applyColorMap(ti, cv2.COLORMAP_BONE) for ti in tracking_imgs]
+        
+        create_keypoints_video_with_images(
+            random_sample, 
+            tracking_imgs, 
+            './visualizations/test_hands17_random_sample_data_module.mp4'
+        )
+    elif args.check_p_at_20:
+        check_p_at_20(dataset)
 
-    # test
-    X_train = np.load(dataset.TRAIN_NPY_FPATH)
-    tracking_imgs_dpath = '/home/temporal2/jsoutelo/datasets/HANDS17/tracking'
-    # grab a random sample
-    sample_idx = np.random.choice(len(X_train))
-    random_sample = X_train[sample_idx]
-    # remove paddings
-    random_sample = random_sample[(random_sample != 0.0).all((1,2))]
-    # grab tracking images
-    tracking_imgs_dpath = os.path.join(tracking_imgs_dpath, str(sample_idx + 1), 'images')
-    num_frames = len(random_sample)
-    tracking_imgs = sorted(os.listdir(tracking_imgs_dpath))[:num_frames]
-    tracking_imgs = [os.path.join(tracking_imgs_dpath, ti) for ti in tracking_imgs]
-    tracking_imgs = [cv2.imread(ti, cv2.IMREAD_UNCHANGED) for ti in tracking_imgs]
-    tracking_imgs = [cv2.normalize(ti, dst=None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1) for ti in tracking_imgs]
-    tracking_imgs = [cv2.applyColorMap(ti, cv2.COLORMAP_BONE) for ti in tracking_imgs]
-    
-    create_keypoints_video_with_images(
-        random_sample, 
-        tracking_imgs, 
-        './visualizations/test_hands17_random_sample_data_module.mp4'
-    )
-
-    embed(); exit()

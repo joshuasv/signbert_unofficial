@@ -6,17 +6,24 @@ import numpy as np
 import lightning.pytorch as pl
 from torch.utils.data import DataLoader
 
-from signbert.data_modules.MaskKeypointDataset import MaskKeypointDataset, mask_keypoint_dataset_collate_fn
-from signbert.utils import read_json
+from signbert.data_modules.PretrainMaskKeypointDataset import PretrainMaskKeypointDataset, mask_keypoint_dataset_collate_fn
+from signbert.utils import read_txt_as_list, dict_to_json_file
 
 from IPython import embed
 
 
 class MSASLDataModule(pl.LightningDataModule):
 
-    DPATH = '/home/gts/projects/jsoutelo/SignBERT+/datasets/WLASL/start_kit'
-    SPLIT_DATA_JSON_FPAHT = os.path.join(DPATH, 'WLASL_v0.3.json')
-    SKELETON_DPAHT = os.path.join(DPATH, 'skeleton-data', 'rtmpose-l_8xb64-270e_coco-wholebody-256x192')
+    DPATH = '/home/tmpvideos/SLR/MSASL'
+    TRAIN_SPLIT_JSON_FPATH = os.path.join(DPATH, 'MSASL_train.json')
+    VAL_SPLIT_JSON_FPATH = os.path.join(DPATH, 'MSASL_val.json')
+    TEST_SPLIT_JSON_FPATH = os.path.join(DPATH, 'MSASL_test.json')
+    CLASSES_JSON_FPATH = os.path.join(DPATH, 'MSASL_classes.json')
+    MISSING_VIDEOS_FPATH = os.path.join(DPATH, 'raw_videos', 'missing.txt')
+    SKELETON_DPATH = os.path.join(DPATH, 'skeleton-data', 'rtmpose-l_8xb64-270e_coco-wholebody-256x192')
+    TRAIN_SKELETON_DPATH = os.path.join(SKELETON_DPATH, 'train')
+    VAL_SKELETON_DPATH = os.path.join(SKELETON_DPATH, 'val')
+    TEST_SKELETON_DPATH = os.path.join(SKELETON_DPATH, 'test')
     PREPROCESS_DPATH = os.path.join(DPATH, 'preprocess')
     MEANS_FPATH = os.path.join(PREPROCESS_DPATH, 'means.npy')
     STDS_FPATH = os.path.join(PREPROCESS_DPATH, 'stds.npy')
@@ -29,6 +36,9 @@ class MSASLDataModule(pl.LightningDataModule):
     TRAIN_IDXS_FPATH = os.path.join(PREPROCESS_DPATH, 'train_idxs.npy')
     VAL_IDXS_FPATH = os.path.join(PREPROCESS_DPATH, 'val_idxs.npy')
     TEST_IDXS_FPATH = os.path.join(PREPROCESS_DPATH, 'test_idxs.npy')
+    TRAIN_MAPPING_IDXS_FPATH = os.path.join(PREPROCESS_DPATH, 'train_mapping_idxs.json')
+    VAL_MAPPING_IDXS_FPATH = os.path.join(PREPROCESS_DPATH, 'val_mapping_idxs.json')
+    TEST_MAPPING_IDXS_FPATH = os.path.join(PREPROCESS_DPATH, 'test_mapping_idxs.json')
     SEQ_PAD_VALUE = 0.0
 
     def __init__(self, batch_size, normalize=False, R=0.3, m=5, K=8, max_disturbance=0.25):
@@ -39,87 +49,118 @@ class MSASLDataModule(pl.LightningDataModule):
         self.m = m
         self.K = K
         self.max_disturbance = max_disturbance
+        self.means_fpath = MSASLDataModule.MEANS_FPATH
+        self.stds_fpath = MSASLDataModule.STDS_FPATH
 
     def prepare_data(self):
         # Create preprocess path if it does not exist
-        if not os.path.exists(WLASLDataModule.PREPROCESS_DPATH):
-            os.makedirs(WLASLDataModule.PREPROCESS_DPATH)
+        if not os.path.exists(MSASLDataModule.PREPROCESS_DPATH):
+            os.makedirs(MSASLDataModule.PREPROCESS_DPATH)
 
         # Compute means and stds
-        if not os.path.exists(WLASLDataModule.MEANS_FPATH) or \
-            not os.path.exists(WLASLDataModule.STDS_FPATH):
-            # Grab train, validation, and test splits data
-            splits_data = read_json(WLASLDataModule.SPLIT_DATA_JSON_FPAHT)
-            # Associate video_id with split
-            train_idxs, val_idxs, test_idxs = self._populate_video_id_by_split(
-                splits_data
-            )
+        if not os.path.exists(MSASLDataModule.MEANS_FPATH) or \
+            not os.path.exists(MSASLDataModule.STDS_FPATH):
             # Grab skeleton file paths
             skeleton_fpaths = glob.glob(
-                os.path.join(WLASLDataModule.SKELETON_DPAHT, '*.npy')
+                os.path.join(MSASLDataModule.TRAIN_SKELETON_DPATH, '*.npy')
             )
-            # Load data
-            train, train_idxs = self._load_data_by_split(train_idxs, skeleton_fpaths)
+            # Load data filtering missing
+            train_idxs = [os.path.basename(f).split('.npy')[0] for f in skeleton_fpaths]
+            missing_idxs = read_txt_as_list(MSASLDataModule.MISSING_VIDEOS_FPATH)
+            train = [
+                np.load(f)
+                for idx, f in zip(train_idxs, skeleton_fpaths)
+                if idx not in missing_idxs
+            ]
             self._generate_means_stds(train)
         
-        if not os.path.exists(WLASLDataModule.TRAIN_FPATH) or \
-            not os.path.exists(WLASLDataModule.VAL_FPATH) or \
-            not os.path.exists(WLASLDataModule.TEST_FPATH) or \
-            not os.path.exists(WLASLDataModule.TRAIN_NORM_FPATH) or \
-            not os.path.exists(WLASLDataModule.VAL_NORM_FPATH) or \
-            not os.path.exists(WLASLDataModule.TEST_NORM_FPATH) or \
-            not os.path.exists(WLASLDataModule.TRAIN_IDXS_FPATH) or \
-            not os.path.exists(WLASLDataModule.VAL_IDXS_FPATH) or \
-            not os.path.exists(WLASLDataModule.TEST_IDXS_FPATH):
-            # Grab train, validation, and test splits data
-            splits_data = read_json(WLASLDataModule.SPLIT_DATA_JSON_FPAHT)
-            # Associate video_id with split
-            train_idxs, val_idxs, test_idxs = self._populate_video_id_by_split(
-                splits_data
+        if not os.path.exists(MSASLDataModule.TRAIN_FPATH) or \
+            not os.path.exists(MSASLDataModule.VAL_FPATH) or \
+            not os.path.exists(MSASLDataModule.TEST_FPATH) or \
+            not os.path.exists(MSASLDataModule.TRAIN_NORM_FPATH) or \
+            not os.path.exists(MSASLDataModule.VAL_NORM_FPATH) or \
+            not os.path.exists(MSASLDataModule.TEST_NORM_FPATH) or \
+            not os.path.exists(MSASLDataModule.TRAIN_IDXS_FPATH) or \
+            not os.path.exists(MSASLDataModule.VAL_IDXS_FPATH) or \
+            not os.path.exists(MSASLDataModule.TEST_IDXS_FPATH) or \
+            not os.path.exists(MSASLDataModule.TRAIN_MAPPING_IDXS_FPATH) or \
+            not os.path.exists(MSASLDataModule.VAL_MAPPING_IDXS_FPATH) or \
+            not os.path.exists(MSASLDataModule.TEST_MAPPING_IDXS_FPATH):
+            # Grab missing idxs
+            missing_idxs = read_txt_as_list(MSASLDataModule.MISSING_VIDEOS_FPATH)
+            # Grab data file paths and filter missing
+            train_skeleton_fpaths = glob.glob(
+                os.path.join(MSASLDataModule.TRAIN_SKELETON_DPATH, '*.npy')
             )
-            # Grab skeleton file paths
-            skeleton_fpaths = glob.glob(
-                os.path.join(WLASLDataModule.SKELETON_DPAHT, '*.npy')
+            train_idxs = [os.path.basename(f).split('.npy')[0] for f in train_skeleton_fpaths]
+            train_skeleton_fpaths = [
+                f 
+                for idx, f in zip(train_idxs, train_skeleton_fpaths) 
+                if idx not in missing_idxs
+            ]  
+            train_idxs = [idx for idx in train_idxs if idx not in missing_idxs]
+            val_skeleton_fpaths = glob.glob(
+                os.path.join(MSASLDataModule.VAL_SKELETON_DPATH, '*.npy')
             )
+            val_idxs = [os.path.basename(f).split('.npy')[0] for f in val_skeleton_fpaths]
+            val_skeleton_fpaths = [
+                f 
+                for idx, f in zip(val_idxs, val_skeleton_fpaths) 
+                if idx not in missing_idxs
+            ]  
+            val_idxs = [idx for idx in train_idxs if idx not in missing_idxs]
+            test_skeleton_fpaths = glob.glob(
+                os.path.join(MSASLDataModule.TEST_SKELETON_DPATH, '*.npy')
+            )
+            test_idxs = [os.path.basename(f).split('.npy')[0] for f in test_skeleton_fpaths]
+            test_skeleton_fpaths = [
+                f 
+                for idx, f in zip(test_idxs, test_skeleton_fpaths) 
+                if idx not in missing_idxs
+            ]  
+            test_idxs = [idx for idx in test_idxs if idx not in missing_idxs]
             # Generate Numpy
             self._generate_preprocess_npy_arrays(
                 train_idxs, 
-                skeleton_fpaths, 
-                WLASLDataModule.TRAIN_FPATH, 
-                WLASLDataModule.TRAIN_NORM_FPATH,
-                WLASLDataModule.TRAIN_IDXS_FPATH
+                train_skeleton_fpaths, 
+                MSASLDataModule.TRAIN_FPATH, 
+                MSASLDataModule.TRAIN_NORM_FPATH,
+                MSASLDataModule.TRAIN_IDXS_FPATH,
+                MSASLDataModule.TRAIN_MAPPING_IDXS_FPATH
             )
             self._generate_preprocess_npy_arrays(
                 val_idxs, 
-                skeleton_fpaths, 
-                WLASLDataModule.VAL_FPATH, 
-                WLASLDataModule.VAL_NORM_FPATH,
-                WLASLDataModule.VAL_IDXS_FPATH
+                val_skeleton_fpaths, 
+                MSASLDataModule.VAL_FPATH, 
+                MSASLDataModule.VAL_NORM_FPATH,
+                MSASLDataModule.VAL_IDXS_FPATH,
+                MSASLDataModule.VAL_MAPPING_IDXS_FPATH
             )
             self._generate_preprocess_npy_arrays(
                 test_idxs, 
-                skeleton_fpaths, 
-                WLASLDataModule.TEST_FPATH, 
-                WLASLDataModule.TEST_NORM_FPATH,
-                WLASLDataModule.TEST_IDXS_FPATH
+                test_skeleton_fpaths, 
+                MSASLDataModule.TEST_FPATH, 
+                MSASLDataModule.TEST_NORM_FPATH,
+                MSASLDataModule.TEST_IDXS_FPATH,
+                MSASLDataModule.TEST_MAPPING_IDXS_FPATH
             )
             
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
-            X_train_fpath = WLASLDataModule.TRAIN_NORM_FPATH if self.normalize else WLASLDataModule.TRAIN_FPATH
-            X_val_fpath = WLASLDataModule.VAL_NORM_FPATH if self.normalize else WLASLDataModule.VAL_FPATH
-            X_test_fpath = WLASLDataModule.TEST_NORM_FPATH if self.normalize else WLASLDataModule.TEST_FPATH
+            X_train_fpath = MSASLDataModule.TRAIN_NORM_FPATH if self.normalize else MSASLDataModule.TRAIN_FPATH
+            X_val_fpath = MSASLDataModule.VAL_NORM_FPATH if self.normalize else MSASLDataModule.VAL_FPATH
+            X_test_fpath = MSASLDataModule.TEST_NORM_FPATH if self.normalize else MSASLDataModule.TEST_FPATH
 
-            self.setup_train = MaskKeypointDataset(
-                WLASLDataModule.TRAIN_IDXS_FPATH, 
+            self.setup_train = PretrainMaskKeypointDataset(
+                MSASLDataModule.TRAIN_IDXS_FPATH, 
                 X_train_fpath, 
                 self.R, 
                 self.m, 
                 self.K, 
                 self.max_disturbance
             )
-            self.setup_val = MaskKeypointDataset(
-                WLASLDataModule.VAL_IDXS_FPATH,
+            self.setup_val = PretrainMaskKeypointDataset(
+                MSASLDataModule.VAL_IDXS_FPATH,
                 X_val_fpath, 
                 self.R, 
                 self.m, 
@@ -133,45 +174,12 @@ class MSASLDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.setup_val, batch_size=self.batch_size, collate_fn=mask_keypoint_dataset_collate_fn)
 
-    def _populate_video_id_by_split(self, data_json):
-        train = []
-        val = []
-        test = []
-        for d in data_json:
-            instances = d['instances']
-            for i in instances:
-                video_id = i['video_id']
-                split = i['split']
-                if split == 'train':
-                    train.append(video_id)
-                elif split == 'val':
-                    val.append(video_id)
-                elif split == 'test':
-                    test.append(video_id)
-                else:
-                    raise ValueError(f'split {split} not recognized')
-        
-        return train, val, test
-
-    def _load_data_by_split(self, split_idxs, skeleton_fpaths):
-        data = []
-        idxs = []
-        for idx in split_idxs:
-            for fpath in skeleton_fpaths:
-                fpath_id = os.path.split(fpath)[-1].replace('.npy', '')
-                if fpath_id == idx:
-                    idxs.append(idx)
-                    data.append(np.load(fpath))
-                    break
-
-        return data, idxs
-
     def _generate_means_stds(self, train_data):
         seq_concats = np.concatenate([s[..., :2] for s in train_data], axis=0)
         means = seq_concats.mean((0, 1))
         stds = seq_concats.std((0, 1))
-        np.save(WLASLDataModule.MEANS_FPATH, means)
-        np.save(WLASLDataModule.STDS_FPATH, stds)
+        np.save(MSASLDataModule.MEANS_FPATH, means)
+        np.save(MSASLDataModule.STDS_FPATH, stds)
 
     def _generate_preprocess_npy_arrays(
             self, 
@@ -180,25 +188,47 @@ class MSASLDataModule(pl.LightningDataModule):
             out_fpath,
             norm_out_fpath,
             idxs_out_fpath,
+            idxs_mapping_out_fpath,
+            max_seq_len=500
         ):
-        seqs, seqs_idxs = self._load_data_by_split(split_idxs, skeleton_fpaths)
+        seqs = []
+        sequential_idx = []
+        counter = 0
+        mapping_idxs = {}
+        for idx, f in zip(split_idxs, skeleton_fpaths):
+            seq = np.load(f)
+            # If sequence is bigger than the maximum length allowed; split
+            if seq.shape[0] > max_seq_len:
+                split_indices = list(range(max_seq_len, seq.shape[0], max_seq_len))
+                seq = np.array_split(seq, split_indices, axis=0)
+                for s in seq:
+                    seqs.append(s)
+                    sequential_idx.append(counter)
+                    mapping_idxs[counter] = idx
+                    counter += 1
+            else:
+                seqs.append(seq)
+                sequential_idx.append(counter)
+                mapping_idxs[counter] = idx
+                counter += 1
         seqs_norm = self._normalize_seqs(seqs)
         seqs = self._pad_seqs_by_max_len(seqs)
         seqs_norm = self._pad_seqs_by_max_len(seqs_norm)
         seqs = seqs.astype(np.float32)
         seqs_norm = seqs_norm.astype(np.float32)
-        seqs_idxs = np.array(seqs_idxs, dtype=np.int32)
+        seqs_idxs = np.array(sequential_idx, dtype=np.int32)
         np.save(out_fpath, seqs)
         np.save(norm_out_fpath, seqs_norm)
         np.save(idxs_out_fpath, seqs_idxs)
+        dict_to_json_file(mapping_idxs, idxs_mapping_out_fpath)
         del seqs
         del seqs_norm
         del seqs_idxs
         gc.collect()
     
     def _normalize_seqs(self, seqs):
-        means = np.load(WLASLDataModule.MEANS_FPATH)
-        stds = np.load(WLASLDataModule.STDS_FPATH)
+        means = np.load(MSASLDataModule.MEANS_FPATH)
+        stds = np.load(MSASLDataModule.STDS_FPATH)
         # Append identity to not affect the score
         means = np.concatenate((means, [0]), -1)
         stds = np.concatenate((stds, [1]), -1)
@@ -215,7 +245,7 @@ class MSASLDataModule(pl.LightningDataModule):
                 array=t, 
                 pad_width=lmdb_gen_pad_seq(seqs_len[i]),
                 mode='constant',
-                constant_values=WLASLDataModule.SEQ_PAD_VALUE
+                constant_values=MSASLDataModule.SEQ_PAD_VALUE
             ) 
             for i, t in enumerate(seqs)
         ])
@@ -225,7 +255,7 @@ class MSASLDataModule(pl.LightningDataModule):
 
 if __name__ == '__main__':
 
-    d = WLASLDataModule(
+    d = MSASLDataModule(
         batch_size=32,
         normalize=True,
     )
