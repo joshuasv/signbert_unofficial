@@ -65,26 +65,26 @@ class How2SignDataModule(pl.LightningDataModule):
             not os.path.exists(How2SignDataModule.TRAIN_IDXS_FPATH) or \
             not os.path.exists(How2SignDataModule.VAL_IDXS_FPATH) or \
             not os.path.exists(How2SignDataModule.TEST_IDXS_FPATH):
-            # train = self._read_openpose_split(How2SignDataModule.TRAIN_SKELETON_DPATH)
-            # self._generate_preprocess_npy_arrays(
-            #     range(len(train)), 
-            #     train, 
-            #     How2SignDataModule.TRAIN_FPATH, 
-            #     How2SignDataModule.TRAIN_NORM_FPATH,
-            #     How2SignDataModule.TRAIN_IDXS_FPATH,
-            # )
-            # del train
-            # gc.collect()
-            # val = self._read_openpose_split(How2SignDataModule.VAL_SKELETON_DPATH)
-            # self._generate_preprocess_npy_arrays(
-            #     range(len(val)), 
-            #     val, 
-            #     How2SignDataModule.VAL_FPATH, 
-            #     How2SignDataModule.VAL_NORM_FPATH,
-            #     How2SignDataModule.VAL_IDXS_FPATH,
-            # )
-            # del val
-            # gc.collect()
+            train = self._read_openpose_split(How2SignDataModule.TRAIN_SKELETON_DPATH)
+            self._generate_preprocess_npy_arrays(
+                range(len(train)), 
+                train, 
+                How2SignDataModule.TRAIN_FPATH, 
+                How2SignDataModule.TRAIN_NORM_FPATH,
+                How2SignDataModule.TRAIN_IDXS_FPATH,
+            )
+            del train
+            gc.collect()
+            val = self._read_openpose_split(How2SignDataModule.VAL_SKELETON_DPATH)
+            self._generate_preprocess_npy_arrays(
+                range(len(val)), 
+                val, 
+                How2SignDataModule.VAL_FPATH, 
+                How2SignDataModule.VAL_NORM_FPATH,
+                How2SignDataModule.VAL_IDXS_FPATH,
+            )
+            del val
+            gc.collect()
             test = self._read_openpose_split(How2SignDataModule.TEST_SKELETON_DPATH)
             self._generate_preprocess_npy_arrays(
                 range(len(test)), 
