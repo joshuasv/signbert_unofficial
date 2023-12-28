@@ -108,8 +108,8 @@ class SignBertModel(pl.LightningModule):
         self.val_pck_20 = PCK(thr=20)
         self.val_pck_auc_20_40 = PCKAUC(thr_min=20, thr_max=40)
 
-        self.train_step_losses = {}
-        self.val_step_losses = {} 
+        self.mean_loss = []
+        self.mean_pck_20 = []
 
     def forward(self, arms, rhand, lhand):
         x = torch.concat((rhand, lhand), dim=2)
@@ -188,8 +188,8 @@ class SignBertModel(pl.LightningModule):
         }
 
     def training_step(self, batch, batch_idx):
-        losses = {}
         opt = self.optimizers()
+        sch = self.lr_schedulers()
         for k, v in batch.items():
             (seq_idx, 
             arms,
@@ -237,7 +237,8 @@ class SignBertModel(pl.LightningModule):
             opt.zero_grad()
             self.manual_backward(loss)
             opt.step()
-            losses[k] = loss.detach().cpu()
+            if isinstance(sch, torch.optim.lr_scheduler.OneCycleLR):
+                sch.step()
             # Compute metrics
             if self.normalize_inputs:
                 # Check that means and stds are in the same device as trainer
@@ -265,11 +266,11 @@ class SignBertModel(pl.LightningModule):
             self.train_pck_auc_20_40.reset()
             # Log metrics
             self.log(f"{k}_train_loss", loss, prog_bar=False)
-            self.log(f"{k}_train_rhand_pck_20", rhand_pck_20, prog_bar=False)
-            self.log(f"{k}_train_lhand_pck_20", lhand_pck_20, prog_bar=False)
-            self.log(f"{k}_train_rhand_pck_auc_20_40", rhand_pck_auc_20_40, prog_bar=False)
-            self.log(f"{k}_train_lhand_pck_auc_20_40", lhand_pck_auc_20_40, prog_bar=False)
-
+            self.log(f"{k}_train_rhand_PCK_20", rhand_pck_20, prog_bar=False)
+            self.log(f"{k}_train_lhand_PCK_20", lhand_pck_20, prog_bar=False)
+            self.log(f"{k}_train_rhand_PCK_auc_20_40", rhand_pck_auc_20_40, prog_bar=False)
+            self.log(f"{k}_train_lhand_PCK_auc_20_40", lhand_pck_auc_20_40, prog_bar=False)
+        
     def validation_step(self, batch, batch_idx, dataloader_idx):
         dataset_key = list(self.trainer.datamodule.val_dataloaders.keys())[dataloader_idx]
         (seq_idx, 
@@ -345,6 +346,18 @@ class SignBertModel(pl.LightningModule):
         self.log(f"{dataset_key}_val_lhand_pck_20", lhand_pck_20, prog_bar=False)
         self.log(f"{dataset_key}_val_rhand_pck_auc_20_40", rhand_pck_auc_20_40, prog_bar=False)
         self.log(f"{dataset_key}_val_lhand_pck_auc_20_40", lhand_pck_auc_20_40, prog_bar=False)
+        # Store epoch level average results
+        self.mean_loss.append(loss.detach().cpu())
+        self.mean_pck_20.append(rhand_pck_20)
+        self.mean_pck_20.append(lhand_pck_20)
+    
+    def on_validation_epoch_end(self):
+        mean_epoch_loss = torch.stack(self.mean_loss).mean()
+        mean_epoch_pck_20 = torch.stack(self.mean_pck_20).mean()
+        self.log("val_loss", mean_epoch_loss, prog_bar=False)
+        self.log("val_PCK_20", mean_epoch_pck_20, prog_bar=False)
+        self.mean_loss.clear()
+        self.mean_pck_20.clear()
 
     def configure_optimizers(self):
         toret = {}
@@ -354,7 +367,7 @@ class SignBertModel(pl.LightningModule):
                 scheduler=torch.optim.lr_scheduler.OneCycleLR(
                     optimizer, 
                     max_lr=self.lr,
-                    total_steps=self.total_steps,
+                    total_steps=self.trainer.estimated_stepping_batches,
                     pct_start=self.pct_start,
                     anneal_strategy='linear'
                 )
