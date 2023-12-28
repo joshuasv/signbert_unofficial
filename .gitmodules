@@ -1,3 +1,0 @@
-[submodule "signbert/model/st_gcn"]
-	path = signbert/model/st_gcn
-	url = https://github.com/yysijie/st-gcn

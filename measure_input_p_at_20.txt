@@ -1,0 +1,32 @@
+{'R': 0.3, 'm': 5, 'K': 8, 'max_disturbance': 0.25, 'no_mask_joint': False}
+Train mean P@20=0.51825877241414
+Validation mean P@20=0.5225893409565242
+
+{'R': 0.3, 'm': 5, 'K': 8, 'max_disturbance': 0.25, 'no_mask_joint': True}
+Train mean P@20=0.5283339363758011
+Validation mean P@20=0.5257374538917734
+
+{'R': 0.3, 'm': 5, 'K': 6.0, 'max_disturbance': 0.25, 'no_mask_joint': False}
+Train mean P@20=0.581709415623636
+Validation mean P@20=0.5786775031475105
+
+{'R': 0.2, 'm': 5, 'K': 6.0, 'max_disturbance': 0.25, 'no_mask_joint': False}
+Train mean P@20=0.7022750678688588
+Validation mean P@20=0.7001359691523542
+
+{'R': 0.1, 'm': 5, 'K': 8, 'max_disturbance': 0.25, 'no_mask_joint': False}
+Train mean P@20=0.8144750655299485
+Validation mean P@20=0.8141270201615612
+
+{'R': 0.2, 'm': 5, 'K': 8, 'max_disturbance': 0.25, 'no_mask_joint': False}
+Train mean P@20=0.6583139709752015
+Validation mean P@20=0.656872120168474
+
+{'R': 0.2, 'm': 5, 'K': 7.0, 'max_disturbance': 0.25, 'no_mask_joint': False}
+Train mean P@20=0.6787240872479449
+Validation mean P@20=0.6818621820873685
+
+{'R': 0.2, 'm': 5, 'K': 8, 'max_disturbance': 0.25, 'no_mask_joint': False}
+Train mean P@20=0.6530493154670253
+Validation mean P@20=0.6520942274970237
+

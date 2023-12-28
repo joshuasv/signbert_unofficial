@@ -28,6 +28,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', default=0, type=int)
     parser.add_argument('--lr', default=None, type=float)
     parser.add_argument('--name', default='test', type=str)
+    parser.add_argument('--val-interval', default=None, type=int)
     args = parser.parse_args()
     
     with open(args.config, 'r') as fid:
@@ -107,6 +108,7 @@ if __name__ == '__main__':
         callbacks=[lr_logger, checkpoint_callback],#, early_stopping_callback],
         log_every_n_steps=1,
         num_sanity_val_steps=0,
-        precision=cfg.get('precision', '32-true')
+        precision=cfg.get('precision', '32-true'),
+        check_val_every_n_epoch=args.val_interval
     )
     trainer.fit(model, datamodule, ckpt_path=args.ckpt)

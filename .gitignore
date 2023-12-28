@@ -2,6 +2,13 @@ lightning_logs/
 logs/
 *.log
 *.sh
+thirdparty
+viz
+visualizations
+notebooks
+inference_outputs
+hparams_logs
+configs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
