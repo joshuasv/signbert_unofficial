@@ -1,6 +1,3 @@
-[submodule "signbert/model/thirdparty/spat_temp_st_gcn"]
-	path = signbert/model/thirdparty/spat_temp_st_gcn
-	url = git@github.com:joshuasv/spat_temp_st_gcn.git
 [submodule "signbert/model/thirdparty/st_gcn"]
 	path = signbert/model/thirdparty/st_gcn
 	url = git@github.com:joshuasv/st_gcn.git
