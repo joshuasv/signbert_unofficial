@@ -1,0 +1,73 @@
+# base config: msg3d-gesture-extractor-cluster-BMSG3D-bf16.yml
+lr: 1.0e-4
+batch_size: 16
+normalize: true
+manotorch: true
+precision: 32-true
+pretrain: true
+
+datasets:
+  MSASL:
+    module_cls: signbert.data_modules.MSASLDataModule.MSASLDataModule
+    dataset_args:
+      R: 0.3
+      m: 5
+      K: 8
+      max_disturbance: 0.25
+  How2Sign:
+    module_cls: signbert.data_modules.How2SignDataModule.How2SignDataModule
+    dataset_args:
+      R: 0.3
+      m: 5
+      K: 8
+      max_disturbance: 0.25
+  WLASL:
+    module_cls: signbert.data_modules.WLASLDataModule.WLASLDataModule
+    dataset_args:
+      R: 0.3
+      m: 5
+      K: 8
+      max_disturbance: 0.25
+  PHOENIX:
+    module_cls: signbert.data_modules.RwthPhoenixDataModule.RwthPhoenixDataModule
+    dataset_args:
+      R: 0.3
+      m: 5
+      K: 8
+      max_disturbance: 0.25
+  PHOENIXT:
+    module_cls: signbert.data_modules.RwthPhoenixDataModule.RwthPhoenixDataModule
+    dataset_args:
+      R: 0.3
+      m: 5
+      K: 8
+      max_disturbance: 0.25
+      phoenix_T: True
+
+model_args:
+  in_channels: 2
+  num_hid: 144
+  num_heads: 4
+  tformer_n_layers: 1
+  tformer_dropout: 0.25
+  eps: 0.5
+  lmbd: 0.01
+  weight_beta: 200.
+  weight_delta: 200.
+  hand_cluster: true
+  n_pca_components: 11
+  gesture_extractor_cls: signbert.model.MSG3DGestureExtractor.PretrainGestureExtractor
+  gesture_extractor_args:
+    num_point: 42
+    num_gcn_scales: 3
+    num_g3d_scales: 3
+    hid_dim: [36, 72, 144]
+    in_channels: 2
+    do_cluster: true
+  arms_extractor_cls: signbert.model.ArmsExtractor.ArmsExtractor
+  arms_extractor_args:
+    in_channels: 2
+    hid_dim: 144
+    dropout: 0.1
+  use_onecycle_lr: True
+  pct_start: 0.1

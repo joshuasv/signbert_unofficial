@@ -1,0 +1,27 @@
+# bf16 has any impact on training performance? => NO, equally performant
+lr: 1.0e-3
+batch_size: 16
+normalize: true
+manotorch: true
+precision: bf16
+
+model_args:
+  in_channels: 2
+  num_hid: 144
+  num_heads: 4
+  tformer_n_layers: 1
+  tformer_dropout: 0.25
+  eps: 0.5
+  lmbd: 0.01
+  weight_beta: 200.
+  weight_delta: 200.
+  hand_cluster: true
+  n_pca_components: 11
+  gesture_extractor_cls: signbert.model.MSG3DGestureExtractor.GestureExtractor
+  gesture_extractor_args:
+    num_point: 21
+    num_gcn_scales: 3
+    num_g3d_scales: 3
+    hid_dim: [36, 72, 144]
+    in_channels: 2
+    do_cluster: true
