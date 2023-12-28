@@ -2,7 +2,6 @@ lightning_logs/
 logs/
 *.log
 *.sh
-thirdparty
 viz
 visualizations
 notebooks
