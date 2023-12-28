@@ -1,3 +1,5 @@
+import os
+
 import torch
 import numpy as np
 import lightning.pytorch as pl
@@ -82,10 +84,12 @@ class SignBertModel(pl.LightningModule):
                 1 # scale scalar
             )
         )
+        mano_assets_root = os.path.split(__file__)[0]
+        mano_assets_root = os.path.join(mano_assets_root, "thirdparty", "mano_assets")
         self.hd = ManoLayer(
             center_idx=0,
             flat_hand_mean=flat_hand,
-            mano_assets_root='/home/gts/projects/jsoutelo/SignBERT+/thirdparty/manotorch/assets/mano',
+            mano_assets_root=mano_assets_root,
             use_pca=use_pca,
             ncomps=n_pca_components,
         )

@@ -3,9 +3,9 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
-from signbert.model.MS_G3D.model.msg3d import HeadlessModel as MSG3D
+from signbert.model.thirdparty.MS_G3D.model.msg3d import HeadlessModel as MSG3D
 from signbert.model.MediapipeHandPooling import MediapipeHandPooling
-from signbert.model.st_gcn.net.st_gcn import HeadlessModel as STGCN
+from signbert.model.thirdparty.st_gcn.net.st_gcn import HeadlessModel as STGCN
 from torch.nn.functional import dropout
 from IPython import embed
 

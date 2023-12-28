@@ -1,3 +1,5 @@
+import os
+
 import torch
 import numpy as np
 import lightning.pytorch as pl
@@ -68,7 +70,7 @@ class SignBertModel(pl.LightningModule):
         self.pct_start = pct_start
 
         num_hid_mult = 1 if hand_cluster else 21
-
+        
         self.ge = self.gesture_extractor_cls(**gesture_extractor_args)
         self.pe = PositionalEncoding(
             d_model=num_hid*num_hid_mult,
@@ -88,17 +90,19 @@ class SignBertModel(pl.LightningModule):
                 1 # scale scalar
             )
         )
+        mano_assets_root = os.path.split(__file__)[0]
+        mano_assets_root = os.path.join(mano_assets_root, "thirdparty", "mano_assets")
         self.rhand_hd = ManoLayer(
             center_idx=0,
             flat_hand_mean=flat_hand,
-            mano_assets_root='/home/gts/projects/jsoutelo/SignBERT+/thirdparty/manotorch/assets/mano',
+            mano_assets_root=mano_assets_root,
             use_pca=use_pca,
             ncomps=n_pca_components,
         )
         self.lhand_hd = ManoLayer(
             center_idx=0,
             flat_hand_mean=flat_hand,
-            mano_assets_root='/home/gts/projects/jsoutelo/SignBERT+/thirdparty/manotorch/assets/mano',
+            mano_assets_root=mano_assets_root,
             use_pca=use_pca,
             ncomps=n_pca_components,
             side="left"
