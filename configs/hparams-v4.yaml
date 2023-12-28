@@ -1,0 +1,32 @@
+lr: 0.0002889078049632839
+batch_size: 16
+normalize: true
+manotorch: true
+
+dataset_args:
+  K: 8
+  R: 0.3
+  m: 5
+  max_disturbance: 0.25
+
+model_args:
+  in_channels: 2
+  num_hid: 32
+  num_heads: 4
+  tformer_n_layers: 1
+  tformer_dropout: 0.25
+  eps: 0.5
+  lmbd: 0.004786774192540496
+  weight_beta: 200.
+  weight_delta: 200.
+  hand_cluster: False
+  n_pca_components: 25
+  gesture_extractor_cls: signbert.model.GestureExtractor.GestureExtractor
+  gesture_extractor_args:
+    in_channels: 2
+    num_hid: 32
+    dropout: 0.25
+  use_onecycle_lr: true
+  pct_start: 0.057277248774761626
+  weight_decay: 0.0009445550455954033
+  total_steps: 12000
