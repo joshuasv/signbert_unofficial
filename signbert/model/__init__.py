@@ -1,1 +1,1 @@
-from signbert.model import GestureExtractor, GestureExtractorSpatTemp, MSG3DGestureExtractor, PositionalEncoding, ArmsExtractor
+from signbert.model import GestureExtractor, MSG3DGestureExtractor, PositionalEncoding, ArmsExtractor

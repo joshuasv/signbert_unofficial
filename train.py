@@ -9,7 +9,6 @@ from lightning.pytorch import loggers as pl_loggers
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 
-from signbert.model.SignBertModel import SignBertModel
 from signbert.model.SignBertModelManoTorch import SignBertModel as SignBertModelManoTorch
 from signbert.model.PretrainSignBertModelManoTorch import SignBertModel as PretrainSignBert
 from signbert.data_modules.HANDS17DataModule import HANDS17DataModule
@@ -41,7 +40,6 @@ if __name__ == '__main__':
     
     batch_size = cfg['batch_size']
     normalize = cfg['normalize']
-    manotorch = cfg.get('manotorch', False)
     pretrain = cfg.get("pretrain", False)
     datasets = cfg.get("datasets", None)
 
@@ -63,7 +61,7 @@ if __name__ == '__main__':
             normalize=normalize, 
             **cfg.get('dataset_args', dict())
         )
-        mano_model_cls = SignBertModelManoTorch if manotorch else SignBertModel
+        mano_model_cls = SignBertModelManoTorch
         model = mano_model_cls(
             **cfg['model_args'], 
             lr=lr, 
