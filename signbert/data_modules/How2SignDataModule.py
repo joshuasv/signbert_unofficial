@@ -43,6 +43,8 @@ class How2SignDataModule(pl.LightningDataModule):
         self.m = m
         self.K = K
         self.max_disturbance = max_disturbance
+        self.means_fpath = How2SignDataModule.MEANS_FPATH
+        self.stds_fpath = How2SignDataModule.STDS_FPATH
 
     def prepare_data(self):
 
@@ -108,7 +110,8 @@ class How2SignDataModule(pl.LightningDataModule):
                 self.R, 
                 self.m, 
                 self.K, 
-                self.max_disturbance
+                self.max_disturbance,
+                openpose=True
             )
             self.setup_val = PretrainMaskKeypointDataset(
                 How2SignDataModule.VAL_IDXS_FPATH,
@@ -116,7 +119,8 @@ class How2SignDataModule(pl.LightningDataModule):
                 self.R, 
                 self.m, 
                 self.K, 
-                self.max_disturbance
+                self.max_disturbance,
+                openpose=True
             )
 
     def train_dataloader(self):

@@ -19,7 +19,8 @@ class PretrainMaskKeypointDataset(Dataset):
             K, 
             max_disturbance=0.25, 
             identity=False,
-            no_mask_joint=False
+            no_mask_joint=False,
+            openpose=False
         ):
         """In the paper they perform an ablation on the MSASL dataset:
             - R: 40%
@@ -40,6 +41,7 @@ class PretrainMaskKeypointDataset(Dataset):
         self.max_disturbance = max_disturbance
         self.identity = identity
         self.no_mask_joint = no_mask_joint
+        self.openpose = openpose
 
     def __len__(self):
         return len(self.data)
@@ -49,11 +51,18 @@ class PretrainMaskKeypointDataset(Dataset):
         seq = self.data[idx]
         score = seq[...,-1]
         seq = seq[...,:-1]
-        arms = seq[:, 5:11]
-        lhand = seq[:, 91:112]
-        rhand = seq[:, 112:133]
-        lhand_scores = score[:, 91:112]
-        rhand_scores = score[:, 112:133]
+        if self.openpose:
+            arms = seq[:, (82, 79, 83, 80, 84, 81)]
+            lhand = seq[:, 95:116]
+            rhand = seq[:, 116:]
+            lhand_scores = score[:, 95:116]
+            rhand_scores = score[:, 116:]
+        else:
+            arms = seq[:, 5:11]
+            lhand = seq[:, 91:112]
+            rhand = seq[:, 112:133]
+            lhand_scores = score[:, 91:112]
+            rhand_scores = score[:, 112:133]
         if self.identity:
             rhand_masked, rhand_masked_frames_idx = self.mask_transform_identity(rhand)
             lhand_masked, lhand_masked_frames_idx = self.mask_transform_identity(lhand)
