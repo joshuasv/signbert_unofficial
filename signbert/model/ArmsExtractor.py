@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from signbert.model.st_gcn.net.st_gcn import HeadlessModel as STGCN
+from signbert.model.thirdparty.st_gcn.net.st_gcn import HeadlessModel as STGCN
 
 from IPython import embed
 
