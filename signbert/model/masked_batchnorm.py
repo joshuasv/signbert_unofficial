@@ -43,9 +43,8 @@ def masked_batch_norm(input: Tensor, mask: Tensor, weight: Optional[Tensor], bia
     _slice = (None, ...) + (None,) * num_dims
     if training:
         num_elements = mask.sum(_dims)
-        with torch.no_grad():
-            mean = (input * mask).sum(_dims) / num_elements  # (C,)
-            var = (((input - mean[_slice]) * mask) ** 2).sum(_dims) / num_elements  # (C,)
+        mean = (input * mask).sum(_dims) / num_elements  # (C,)
+        var = (((input - mean[_slice]) * mask) ** 2).sum(_dims) / num_elements  # (C,)
         # var = (((input - mean.as_strided((1,mean.shape[0])+(1,)*num_dims, (1,)*len(input.shape))) * mask) ** 2).sum(_dims) / num_elements  # (C,)
 
         if running_mean is not None:
