@@ -1,0 +1,8 @@
+lr: 1.0e-3
+batch_size: 32
+
+datamodule_args:
+  normalize: True
+
+head_args:
+  num_classes: 1000
