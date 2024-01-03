@@ -10,10 +10,25 @@ from torch.nn.utils.rnn import pad_sequence
 
 from signbert.utils import read_json, read_txt_as_list
 
-from IPython import embed;
-
 
 class MSASLDataModule(pl.LightningDataModule):
+    """
+    A PyTorch Lightning DataModule for the MS-ASL dataset.
+
+    This class handles data loading and preprocessing for training, validation,
+    and testing on the MS-ASL dataset. It organizes paths to various data files 
+    and directories and sets up data loaders for the model.
+
+    Class Attributes:
+    Various paths to data directories and files necessary for the MS-ASL dataset.
+    VIDEO_ID_PATTERN: Regular expression pattern to extract video IDs.
+    PADDING_VALUE: The value used for padding sequences.
+
+    Instance Attributes:
+    batch_size (int): Batch size for data loaders.
+    normalize (bool): Flag to indicate whether to normalize the data.
+    """
+    # Class-level attributes defining paths to various data files and directories
     DPATH = '/home/tmpvideos/SLR/MSASL'
     PREPROCESS_DPATH = os.path.join(DPATH, 'preprocess')
     MISSING_VIDEOS_FPATH = os.path.join(DPATH, 'raw_videos', 'missing.txt')
@@ -31,12 +46,28 @@ class MSASLDataModule(pl.LightningDataModule):
     PADDING_VALUE = 0.0
 
     def __init__(self, batch_size, normalize):
+        """
+        Initialize the MSASLDataModule.
+
+        Parameters:
+        batch_size (int): The size of the batches for data loading.
+        normalize (bool): Whether to normalize the data based on predefined means and standard deviations.
+        """
         super().__init__()
         self.batch_size = batch_size
         self.normalize = normalize
 
     def setup(self, stage):
+        """
+        Prepares the datasets for the given stage (either 'fit' or 'test'; last
+        not implemented).
+
+        Parameters:
+        stage (str): The stage for which to prepare the datasets - typically 'fit' for training and validation.
+        """
+        # Read the class labels from a JSON file
         classes = read_json(MSASLDataModule.CLASSES_JSON_FPATH)
+        # Read the list of missing video IDs from a text file
         missing_video_ids = read_txt_as_list(MSASLDataModule.MISSING_VIDEOS_FPATH) 
         if stage == "fit":
             train_info = read_json(MSASLDataModule.TRAIN_SPLIT_JSON_FPATH)
@@ -86,8 +117,30 @@ class MSASLDataModule(pl.LightningDataModule):
 
 
 class MSASLDataset(Dataset):
+    """
+    A PyTorch Dataset for handling data from the MS-ASL dataset.
 
+    This class loads skeleton data for each sample, normalizes it if required, and
+    extracts specific features like arms, left hand, and right hand keypoints.
+
+    Attributes:
+    train_info (list): A list of dictionaries containing information about each sample.
+    skeleton_dpath (str): Path to the directory containing skeleton data files.
+    normalize (bool): Flag indicating whether the data should be normalized.
+    normalize_mean (numpy.ndarray or None): Mean values for normalization.
+    normalize_std (numpy.ndarray or None): Standard deviation values for normalization.
+    """
     def __init__(self, train_info, skeleton_dpath, normalize, normalize_mean=None, normalize_std=None):
+        """
+        Initialize the MSASLDataset.
+
+        Parameters:
+        train_info (list): Information about each training sample.
+        skeleton_dpath (str): Path to the directory with skeleton data files.
+        normalize (bool): Whether to normalize the data.
+        normalize_mean (numpy.ndarray, optional): Mean values for normalization.
+        normalize_std (numpy.ndarray, optional): Standard deviation values for normalization.
+        """
         super().__init__()
         self.train_info = train_info
         self.skeleton_dpath = skeleton_dpath
@@ -96,24 +149,36 @@ class MSASLDataset(Dataset):
         self.normalize_std = normalize_std
 
     def __len__(self):
+        """Returns the number of samples in the dataset."""
         return len(self.train_info)
 
     def __getitem__(self, idx):
+        """
+        Retrieves a sample from the dataset at the specified index.
+
+        Parameters:
+        idx (int): Index of the sample to retrieve.
+
+        Returns:
+        dict: A dictionary containing the sample data.
+        """
         sample = self.train_info[idx]
         class_id = sample["class_id"]
         video_id = sample["video_id"]
         start_video = sample["start"]
         end_video = sample["end"]
+        # Load skeleton data for the specified video segment
         skeleton_video_fpath = os.path.join(self.skeleton_dpath, f"{video_id}.npy")
         skeleton_data = np.load(skeleton_video_fpath)[start_video:end_video]
-        # Drop score
+        # Drop the score column if present and normalize data if required
         skeleton_data = skeleton_data[...,:2]
         if self.normalize:
             skeleton_data = (skeleton_data - self.normalize_mean) / self.normalize_std
+        # Extract specific features: arms, left hand, and right hand keypoints
         arms = skeleton_data[:, 5:11]
         lhand = skeleton_data[:, 91:112]
         rhand = skeleton_data[:, 112:133]
-
+        
         return {
             "sample_id": idx,
             "class_id": class_id,
@@ -124,6 +189,7 @@ class MSASLDataset(Dataset):
 
 
 def my_collate_fn(original_batch):
+    """Custom collate DataLoader function."""
     sample_id = []
     class_id = []
     arms = []
@@ -148,14 +214,3 @@ def my_collate_fn(original_batch):
         "lhand": lhand,
         "rhand": rhand
     }
-
-
-if __name__ == "__main__":
-
-    d = MSASLDataModule(batch_size=32, normalize=True)
-    d.setup(stage="fit")
-    dl = d.train_dataloader()
-    batch = next(iter(dl))
-    embed(); exit()
-
-
