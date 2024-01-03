@@ -131,7 +131,7 @@ class RwthPhoenixDataModule(pl.LightningDataModule):
         np.save(self.test_idxs_fpath, test_idxs)
     
     def _generate_train_means_stds(self):
-        embed(); exit()
+        """Compute mean and standard deviation for all x and y coordinates."""
         npy_files = glob.glob(os.path.join(self.train_dpath, '*.npy'))
         npy_concats = np.concatenate([np.load(f)[...,:2] for f in npy_files])
         means = np.mean(npy_concats, axis=(0,1))
@@ -140,43 +140,106 @@ class RwthPhoenixDataModule(pl.LightningDataModule):
         np.save(self.stds_fpath, stds)
 
     def _generate_preprocess_npy_arrays(self, dpath, out_fpath, norm_out_fpath):
-        # Load from disk
+        """
+        Process and save sequences of data in numpy format.
+
+        Loads raw sequences from disk, normalizes them by mean and standard 
+        deviation, pads them to a uniform length, and finally saves the 
+        processed sequences to disk.
+
+        Parameters:
+        dpath (str): Directory path where raw sequences are stored.
+        out_fpath (str): File path for saving the processed (but not normalized) sequences.
+        norm_out_fpath (str): File path for saving the normalized sequences.
+        """
+        # Load raw sequences from the specified directory
         seqs = self._load_raw_seqs(dpath)
-        # Normalize by mean and standard deviation
+        # Normalize the sequences by their mean and standard deviation
         seqs_norm = self._normalize_seqs(seqs)
-        # Pad
+        # Pad the sequences to ensure they all have the same length
         seqs = self._pad_seqs_by_max_len(seqs)
         seqs_norm = self._pad_seqs_by_max_len(seqs_norm)
-        # Save
+        # Save the processed and normalized sequences to disk
         np.save(out_fpath, seqs)
         np.save(norm_out_fpath, seqs_norm)
-        # Free memory
+        # Free up memory by deleting the large sequence variables and invoking garbage collection
         del seqs
         del seqs_norm
         gc.collect()
-        
+ 
     def _load_raw_seqs(self, dpath):
-        seqs = [
-            np.load(f)
-            for f in glob.glob(os.path.join(dpath, '*.npy'))
-        ]
+        """
+        Load raw sequences from .npy files in a specified directory.
+
+        This function scans a given directory for .npy files and loads the data from
+        each file into a list. 
+
+        Parameters:
+        dpath (str): The directory path where .npy files are stored.
+
+        Returns:
+        list: A list of numpy arrays, each array loaded from a .npy file.
+        """
+        # Use glob to find all .npy files in the specified directory
+        npy_files = glob.glob(os.path.join(dpath, '*.npy'))
+        # Load each .npy file and append its contents to the list
+        seqs = [np.load(f) for f in npy_files]
 
         return seqs
 
     def _normalize_seqs(self, seqs):
+        """
+        Normalize the sequences using pre-calculated means and standard deviations.
+
+        This function normalizes each sequence in the provided list of sequences (seqs)
+        by subtracting the mean and dividing by the standard deviation for each element
+        in the sequence. This is a common preprocessing step in many machine learning
+        tasks, as it standardizes data to have a mean of 0 and a standard deviation of 1.
+
+        Parameters:
+        seqs (list): List of sequences to be normalized.
+        
+        Returns:
+        list: A list of normalized sequences.
+        """
+        # Load the pre-calculated means and standard deviations for normalization
         means = np.load(self.means_fpath)
         stds = np.load(self.stds_fpath)
-        # Append identity to not affect the score
+        # Append a zero to means and a one to stds for the identity operation.
+        # This ensures that the last element of each sequence is not affected by normalization.
         means = np.concatenate((means, [0]), -1)
         stds = np.concatenate((stds, [1]), -1)
+        # Normalize each sequence in the list
+        # The normalization is done by subtracting the mean and dividing by the standard deviation
+        # for each element in the sequence.
         seqs_norm = [(s - means) / stds for s in seqs]
 
         return seqs_norm
 
     def _pad_seqs_by_max_len(self, seqs):
+        """
+        Pad all sequences in the list to the same maximum length.
+
+        This function pads each sequence in the list 'seqs' to ensure they all have the
+        same length. This is particularly useful for batch processing in machine learning
+        models, as it requires all inputs to be of the same size.
+
+        Parameters:
+        seqs (list): List of sequences (numpy arrays) to be padded.
+
+        Returns:
+        numpy.ndarray: A numpy array of sequences, all padded to the same maximum length.
+        """
+        # Calculate the length of each sequence in the list
         seqs_len = [len(t) for t in seqs]
+        # Find the maximum sequence length
         max_seq_len = max(seqs_len)
+        # Define a lambda function for generating padding configuration
+        # It calculates how much padding is needed for each sequence to match the max length
         lmdb_gen_pad_seq = lambda s_len: ((0,max_seq_len-s_len), (0,0), (0,0))
+        # Pad each sequence in the list
+        # The padding is applied only to the sequence length dimension and
+        # filled with a constant value 
         seqs = np.stack([
             np.pad(
                 array=t, 

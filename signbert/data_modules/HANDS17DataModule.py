@@ -252,20 +252,51 @@ class HANDS17DataModule(pl.LightningDataModule):
             np.save(HANDS17DataModule.STD_Z_NPY_FPATH, std_z)
 
     def from_wc_to_uv(self, wc, return_z=False):
-        """Computes the UV pixel coordinates from the XYZ world coordinates."""
+        """
+        Convert world coordinates (XYZ) to UV pixel coordinates.
+
+        This function transforms 3D world coordinates into 2D UV pixel coordinates using
+        the intrinsic camera parameters. It can be used in applications like computer vision 
+        and 3D graphics where you need to project 3D points onto a 2D image plane.
+
+        Parameters:
+        wc (numpy.ndarray): Array of world coordinates (XYZ) to be transformed.
+        return_z (bool): Flag to indicate whether to return the Z component. Default is False.
+
+        Returns:
+        tuple: 
+            - A numpy array of UV pixel coordinates.
+            - Z component of the UV coordinates if return_z is True, else None.
+        """
+        # Multiply the world coordinates by the intrinsic camera parameters
+        # The intrinsic camera parameters are used to transform 3D points to 2D points
+        # in the camera's coordinate system.
         uv = np.einsum('ij,nkj->nki', HANDS17DataModule.INTRINSIC_CAM_PARAMS, wc)
+        # Extract the Z component if requested
         z = uv[..., -1] if return_z else None
+        # Normalize the UV coordinates by dividing with the Z component
+        # This step converts the coordinates from homogeneous to Cartesian coordinates.
         uv = uv / uv[...,-1][...,None]
+        # Keep only the first two dimensions (U and V) of the UV coordinates
         uv = uv[..., :2]
-        
+
         return uv, z
 
     def from_hands17_to_mediapipe(self, coords):
-        """Reorders the keypoints so it matches Mediapipes'
-        From:
-        [Wrist,TMCP,IMCP,MMCP,RMCP,PMCP,TPIP,TDIP,TTIP,IPIP,IDIP,ITIP,MPIP,MDIP,MTIP,RPIP,RDIP,RTIP,PPIP,PDIP,PTIP]
-        To:
-        [Wrist,TMCP,TPIP,TDIP,TTIP,IMCP,IPIP,IDIP,ITIP,MMCP,MPIP,MDIP,MTIP,RMCP,RPIP,RDIP,RTIP,PMCP,PPIP,PDIP,PTIP]
+        """
+        Reorder hand keypoints from HANDS17 format to MediaPipe format.
+        
+        For reference, it translates
+        from:
+            [Wrist,TMCP,IMCP,MMCP,RMCP,PMCP,TPIP,TDIP,TTIP,IPIP,IDIP,ITIP,MPIP,MDIP,MTIP,RPIP,RDIP,RTIP,PPIP,PDIP,PTIP]
+        to:
+            [Wrist,TMCP,TPIP,TDIP,TTIP,IMCP,IPIP,IDIP,ITIP,MMCP,MPIP,MDIP,MTIP,RMCP,RPIP,RDIP,RTIP,PMCP,PPIP,PDIP,PTIP]
+
+        Parameters:
+        coords (numpy.ndarray): Array of hand keypoints in HANDS17 format.
+
+        Returns:
+        numpy.ndarray: Array of hand keypoints reordered to match MediaPipe format.
         """
         wrist = coords[:, 0][:, None]
         thumb = coords[:, (1, 6, 7, 8)]
@@ -273,6 +304,7 @@ class HANDS17DataModule(pl.LightningDataModule):
         middle = coords[:, (3, 12, 13, 14)]
         ring = coords[:, (4, 15, 16, 17)]
         pinky = coords[:, (5, 18, 19, 20)]
+        # Concatenate all the reordered coordinates
         reordered = np.concatenate((
             wrist,
             thumb,

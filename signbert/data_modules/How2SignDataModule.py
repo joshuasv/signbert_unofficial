@@ -57,7 +57,7 @@ class How2SignDataModule(pl.LightningDataModule):
             not os.path.exists(How2SignDataModule.STDS_FPATH):
             train = self._read_openpose_split(How2SignDataModule.TRAIN_SKELETON_DPATH)
             self._generate_means_stds(train)
-        
+        # Check if train/test wc/uv Numpy array files exist, if not, create them 
         if not os.path.exists(How2SignDataModule.TRAIN_FPATH) or \
             not os.path.exists(How2SignDataModule.VAL_FPATH) or \
             not os.path.exists(How2SignDataModule.TEST_FPATH) or \
@@ -130,6 +130,7 @@ class How2SignDataModule(pl.LightningDataModule):
         return DataLoader(self.setup_val, batch_size=self.batch_size, collate_fn=mask_keypoint_dataset_collate_fn)
 
     def _read_openpose_split(self, split_fpath):
+        """Read Openpose prediction output file in parallel."""
         skeleton_fpaths = glob.glob(os.path.join(split_fpath, '*')) 
         executor = ProcessPoolExecutor(max_workers=os.cpu_count())
         futures = []
@@ -143,6 +144,7 @@ class How2SignDataModule(pl.LightningDataModule):
 
 
     def _read_openpose_json_out(self, fpath):
+        """Parse Openpose output from JSON to a Numpy array."""
         json_fpaths = sorted(glob.glob(os.path.join(fpath, '*.json')))
         data = []
         for f in json_fpaths:
@@ -158,6 +160,7 @@ class How2SignDataModule(pl.LightningDataModule):
         return data
 
     def _generate_means_stds(self, train_data):
+        """Compute mean and standard deviation for all x and y coordinates."""
         seq_concats = np.concatenate([s[..., :2] for s in train_data], axis=0)
         means = seq_concats.mean((0, 1))
         stds = seq_concats.std((0, 1))
@@ -173,44 +176,109 @@ class How2SignDataModule(pl.LightningDataModule):
             idxs_out_fpath,
             max_seq_len=500
         ):
+        """
+        Process a raw skeleton sequence so it can be used during training.
+        
+        This function takes a list of skeleton file paths, processes them, and saves the 
+        results in .npy format files for easy access during training.
+
+        Parameters:
+        split_idxs (list): Unused in the current implementation.
+        skeleton_fpaths (list): List of file paths containing raw skeleton sequences.
+        out_fpath (str): File path for saving the processed sequences.
+        norm_out_fpath (str): File path for saving the normalized sequences.
+        idxs_out_fpath (str): File path for saving the indices of the sequences.
+        max_seq_len (int): Maximum length of a sequence before splitting it into smaller sequences. Default is 500.
+        """
+        # Initialize an empty list to store processed sequences
         seqs = []
+        # Iterate over each skeleton file path
         for seq in skeleton_fpaths:
+            # Check if the sequence length exceeds the maximum sequence length
             if seq.shape[0] > max_seq_len:
+                # Calculate the split indices for the sequence
                 split_indices = list(range(max_seq_len, seq.shape[0], max_seq_len))
+                # Split the sequence into smaller sequences based on calculated indices
                 seq = np.array_split(seq, split_indices, axis=0)
+                # Append each smaller sequence to the list
                 for s in seq:
                     seqs.append(s)
             else:
+                # Append the sequence as is if it doesn't exceed max length
                 seqs.append(seq)
+        # Generate indices for each sequence
         seqs_idxs = range(len(seqs)) 
+        # Normalize the sequences
         seqs_norm = self._normalize_seqs(seqs)
+        # Pad the sequences to ensure they all have the same length
         seqs = self._pad_seqs_by_max_len(seqs)
         seqs_norm = self._pad_seqs_by_max_len(seqs_norm)
         seqs = seqs.astype(np.float32)
         seqs_norm = seqs_norm.astype(np.float32)
         seqs_idxs = np.array(seqs_idxs, dtype=np.int32)
+        # Save the processed sequences, normalized sequences, and indices to the respective file paths
         np.save(out_fpath, seqs)
         np.save(norm_out_fpath, seqs_norm)
         np.save(idxs_out_fpath, seqs_idxs)
+        # Free up memory by deleting the large variables and invoking garbage collection
         del seqs
         del seqs_norm
         del seqs_idxs
         gc.collect()
     
     def _normalize_seqs(self, seqs):
+        """
+        Normalize the sequences using pre-calculated means and standard deviations.
+
+        This function normalizes each sequence in the provided list of sequences (seqs)
+        by subtracting the mean and dividing by the standard deviation for each element
+        in the sequence. This is a common preprocessing step in many machine learning
+        tasks, as it standardizes data to have a mean of 0 and a standard deviation of 1.
+
+        Parameters:
+        seqs (list): List of sequences to be normalized.
+        
+        Returns:
+        list: A list of normalized sequences.
+        """
+        # Load the pre-calculated means and standard deviations for normalization
         means = np.load(How2SignDataModule.MEANS_FPATH)
         stds = np.load(How2SignDataModule.STDS_FPATH)
-        # Append identity to not affect the score
+        # Append a zero to means and a one to stds for the identity operation.
+        # This ensures that the last element of each sequence is not affected by normalization.
         means = np.concatenate((means, [0]), -1)
         stds = np.concatenate((stds, [1]), -1)
+        # Normalize each sequence in the list
+        # The normalization is done by subtracting the mean and dividing by the standard deviation
+        # for each element in the sequence.
         seqs_norm = [(s - means) / stds for s in seqs]
 
         return seqs_norm
-    
+
     def _pad_seqs_by_max_len(self, seqs):
+        """
+        Pad all sequences in the list to the same maximum length.
+
+        This function pads each sequence in the list 'seqs' to ensure they all have the
+        same length. This is particularly useful for batch processing in machine learning
+        models, as it requires all inputs to be of the same size.
+
+        Parameters:
+        seqs (list): List of sequences (numpy arrays) to be padded.
+
+        Returns:
+        numpy.ndarray: A numpy array of sequences, all padded to the same maximum length.
+        """
+        # Calculate the length of each sequence in the list
         seqs_len = [len(t) for t in seqs]
+        # Find the maximum sequence length
         max_seq_len = max(seqs_len)
+        # Define a lambda function for generating padding configuration
+        # It calculates how much padding is needed for each sequence to match the max length
         lmdb_gen_pad_seq = lambda s_len: ((0,max_seq_len-s_len), (0,0), (0,0))
+        # Pad each sequence in the list
+        # The padding is applied only to the sequence length dimension and
+        # filled with a constant value 
         seqs = np.stack([
             np.pad(
                 array=t, 
