@@ -44,6 +44,12 @@ mano_assets/
 conda env create -f environment.yml
 ```
 
+# Install manotorch
+```
+cd signbert/model/thirdparty/manotorch
+pip install .
+```
+
 # Run a training session
 ```bash
 python train.py --config configs/pretrain.yml
