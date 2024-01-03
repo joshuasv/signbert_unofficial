@@ -61,6 +61,12 @@ python finetune.py --config finetune/configs/ISLR_MSASL.yml
 tensorboard --logdir <LOGS_DPATH>
 ```
 
+# Create visualization
+```bash
+cd visualization
+python create_visualization.py
+```
+
 If you find this code useful for your research, please consider citing:
 
     @article{hu2023signbert+,
