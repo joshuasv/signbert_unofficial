@@ -68,6 +68,8 @@ tensorboard --logdir <LOGS_DPATH>
 ```
 
 # Create visualization
+First, install [pytorch3d](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md)
+
 ```bash
 cd visualization
 python create_visualization.py

@@ -170,7 +170,6 @@ dependencies:
       - python-editor==1.0.4
       - python-multipart==0.0.6
       - pytorch-lightning==2.0.9.post0
-      - pytorch3d==0.7.4
       - pytz==2023.3.post1
       - pyyaml==6.0.1
       - readchar==4.0.5
