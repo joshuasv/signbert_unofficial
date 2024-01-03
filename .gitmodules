@@ -4,3 +4,6 @@
 [submodule "signbert/model/thirdparty/MS_G3D"]
 	path = signbert/model/thirdparty/MS_G3D
 	url = git@github.com:joshuasv/MS_G3D.git
+[submodule "signbert/model/thirdparty/manotorch"]
+	path = signbert/model/thirdparty/manotorch
+	url = https://github.com/lixiny/manotorch.git

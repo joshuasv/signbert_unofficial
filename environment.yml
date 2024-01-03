@@ -146,7 +146,6 @@ dependencies:
       - lightning-utilities==0.9.0
       - lit==15.0.7
       - mako==1.2.4
-      - manotorch==0.0.2
       - markdown-it-py==3.0.0
       - markupsafe==2.1.2
       - matplotlib==3.8.0
