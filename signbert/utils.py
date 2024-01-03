@@ -3,11 +3,26 @@ import gc
 import torch
 
 def my_import(name):
+    """
+    Dynamically import a module or object in Python.
+
+    Given the full name of a module or an object within a module (as a string),
+    this function imports it and returns the module or object.
+
+    Parameters:
+    name (str): The full name of the module or object to import, e.g., 'numpy.array'.
+
+    Returns:
+    module/object: The imported module or object.
+    """
+    # Split the full name by dots to separate the module and object names
     components = name.split('.')
+    # Import the top-level module
     mod = __import__(components[0])
+    # Traverse through the module hierarchy to get to the desired object
     for comp in components[1:]:
         mod = getattr(mod, comp)
-        
+
     return mod
 
 def read_json(fpath):
