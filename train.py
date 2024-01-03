@@ -29,38 +29,38 @@ if __name__ == '__main__':
     parser.add_argument('--name', default='test', type=str)
     parser.add_argument('--val-interval', default=None, type=int)
     args = parser.parse_args()
-    
+    # Load config 
     with open(args.config, 'r') as fid:
         cfg = yaml.load(fid, yaml.SafeLoader)
-
     pprint(cfg)
-
     epochs = args.epochs if args.epochs is not None else 600 
     lr = args.lr if args.lr is not None else cfg['lr'] # Preference over arguments
-    
     batch_size = cfg['batch_size']
     normalize = cfg['normalize']
     pretrain = cfg.get("pretrain", False)
     datasets = cfg.get("datasets", None)
-
-    if pretrain:
+    if pretrain: # If pretraining is to be executed
         assert datasets is not None
+        # Initialize datamodule
         datamodule = PretrainDataModule(
             datasets,
             batch_size=batch_size,
             normalize=normalize
         )
+        # Initialize model
         model = PretrainSignBert(
             **cfg["model_args"],
             lr=lr, 
             normalize_inputs=normalize, 
         )
     else:
+        # Initialize datamodule
         datamodule = HANDS17DataModule(
             batch_size=batch_size, 
             normalize=normalize, 
             **cfg.get('dataset_args', dict())
         )
+        # Initialize model
         mano_model_cls = SignBertModelManoTorch
         model = mano_model_cls(
             **cfg['model_args'], 
@@ -70,7 +70,7 @@ if __name__ == '__main__':
             stds_fpath=HANDS17DataModule.STDS_NPY_FPATH,
         )
     
-    if _DEBUG:
+    if _DEBUG: # Switch between trainer configs wheter debug is enabled
         trainer_config = dict(
             accelerator='cpu',
             strategy='auto',
@@ -89,16 +89,19 @@ if __name__ == '__main__':
             max_epochs=epochs
         )
 
-    if args.ckpt:
+    if args.ckpt: # Check if training shall be resumed from checkpoint
         print('Resuming training from ckpt:', args.ckpt)
-    
+    # Initialize learning rate logger
     lr_logger = LearningRateMonitor(logging_interval='step')
+    # Initialize Tensorboard logger 
     logs_dpath = os.path.join(os.getcwd(), 'logs')
     tb_logger = pl_loggers.TensorBoardLogger(save_dir=logs_dpath, name=args.name)
+    # Initialize model checkpointing callback
     ckpt_dirpath = os.path.join(tb_logger.log_dir, 'ckpts')
     checkpoint_callback = ModelCheckpoint(dirpath=ckpt_dirpath, save_top_k=10, monitor="val_PCK_20", mode='max', filename="epoch={epoch:02d}-step={step}-{val_PCK_20:.4f}", save_last=True)
+    # Initialize early stopping callback
     early_stopping_callback = EarlyStopping(monitor="val_PCK_20", mode="max", patience=30, min_delta=1e-4)
-    
+    # Setup and configure the Trainer 
     trainer = Trainer(
         **trainer_config,
         accumulate_grad_batches=cfg.get('accumulate_grad_batches', 1), 
@@ -109,4 +112,4 @@ if __name__ == '__main__':
         precision=cfg.get('precision', '32-true'),
         check_val_every_n_epoch=args.val_interval
     )
-    trainer.fit(model, datamodule, ckpt_path=args.ckpt)
+    trainer.fit(model, datamodule, ckpt_path=args.ckpt) # Start trainig

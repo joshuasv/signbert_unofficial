@@ -13,7 +13,7 @@ from finetune.SignBERTModel import SignBertModel
 from IPython import embed;
 
 class Config:
-
+    """Stores configuration parameters"""
     def __init__(self, **config):
         self.__dict__.update(config)
     
@@ -24,20 +24,23 @@ class Config:
 def main(args):
     with open(args.config, "r") as fid:
         cfg = yaml.load(fid, yaml.SafeLoader)
-    # args overrides cfg
+    # Update configuration with command line arguments (args overrides cfg)
     cfg.update(args.__dict__)
+    # Create Config object
     config = Config(**cfg)
     print(config)
-
+    # Instantiate data module with batch size and additional datamodule arguments
     datamodule = MSASLDataModule(
         batch_size=config.batch_size,
         **config.datamodule_args
     )
+    # Instantiate the model with checkpoint, learning rate, and head arguments
     model = SignBertModel(ckpt=config.ckpt, lr=config.lr, head_args=config.head_args)
-
+    # Setup logging and checkpoint directories
     logs_dpath = os.path.join(os.getcwd(), "finetune_logs")
     tb_logger = pl_loggers.TensorBoardLogger(save_dir=logs_dpath, name=config.name)
     ckpt_dirpath = os.path.join(tb_logger.log_dir, "ckpts")
+    # Configure model checkpoint callback
     ckpt_cb = ModelCheckpoint(
         dirpath=ckpt_dirpath, 
         save_top_k=5, 
@@ -46,6 +49,7 @@ def main(args):
         filename="epoch={epoch:02d}-step={step}-{val_acc:.4f}", 
         save_last=True
     )
+    # Setup and configure the Trainer
     trainer = Trainer(
         accelerator="gpu",
         strategy="auto",
@@ -57,7 +61,7 @@ def main(args):
         num_sanity_val_steps=0,
         precision=config.precision
     )
-    trainer.fit(model, datamodule)
+    trainer.fit(model, datamodule) # Start training
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
